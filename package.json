@@ -1,0 +1,46 @@
+{
+  "name": "ai-carousel-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsx --env-file=.env src/index.ts",
+    "research": "tsx --env-file=.env src/research/index.ts",
+    "render:one": "tsx --env-file=.env src/cli/render-one.ts",
+    "playbook:refresh": "tsx --env-file=.env src/content/playbook.ts",
+    "config": "tsx --env-file=.env src/delivery/configServer.ts",
+    "queue": "tsx --env-file=.env src/queue/server.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.93.0",
+    "@bull-board/api": "^7.0.0",
+    "@bull-board/express": "^7.0.0",
+    "@fal-ai/client": "^1.2.0",
+    "@google/genai": "^1.0.0",
+    "@napi-rs/canvas": "^0.1.59",
+    "@types/qrcode": "^1.5.6",
+    "@types/qrcode-terminal": "^0.12.2",
+    "archiver": "^7.0.1",
+    "bullmq": "^5.76.6",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.1",
+    "jsonrepair": "^3.14.0",
+    "nodemailer": "^8.0.7",
+    "p-limit": "^6.1.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.33.5",
+    "whatsapp-web.js": "^1.34.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.0",
+    "@types/nodemailer": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
