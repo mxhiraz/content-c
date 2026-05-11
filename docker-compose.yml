@@ -19,8 +19,8 @@ services:
     env_file:
       - .env
     ports:
-      - "18080:8080"   # config UI → http://server:18080
-      - "13000:3000"   # queue server (bull-board + webhook) → /queue dashboard
+      - "8080:8080"    # config UI → http://server:8080
+      - "6060:3000"    # queue server (bull-board + webhook) → http://server:6060/queue
     volumes:
       - ./out:/app/out
     shm_size: "1gb"
