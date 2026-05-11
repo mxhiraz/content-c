@@ -105,22 +105,26 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
   const productFirst: (ExtractedAsset | null)[] = [githubAsset, hfPaperAsset, arxivAsset, pageAssets.primaryImage, wikiSubject, sceneAssets[0] ?? null];
   let subject: ExtractedAsset | null = (looksLikePerson ? personFirst : productFirst).find((a): a is ExtractedAsset => !!a) ?? null;
 
-  // Dedup: if subject hash matches a recent carousel, walk to next candidate; if all repeat, force Gemini fallback
+  // Dedup: if subject matches a recent carousel by hash OR url, swap to next candidate; else force Gemini
   const recent = await loadRecentSubjects();
   const candidates = (looksLikePerson ? personFirst : productFirst).filter((a): a is ExtractedAsset => !!a);
-  let chosenHash = subject ? hashBuffer(subject.buffer) : "";
-  if (subject && recent.includes(chosenHash)) {
-    const fresh = candidates.find((c) => !recent.includes(hashBuffer(c.buffer)));
-    if (fresh) {
-      subject = fresh;
-      chosenHash = hashBuffer(fresh.buffer);
-      log.info("asset", `swapped subject to non-recent candidate (avoid repeat)`);
-    } else {
-      log.info("asset", `all subject candidates seen recently, forcing Gemini hook gen`);
-      subject = null; // forces gemini fallback path in render
+  if (subject) {
+    const chosenEntry: RecentEntry = { hash: hashBuffer(subject.buffer), url: subject.source };
+    if (isRecent(chosenEntry, recent)) {
+      const fresh = candidates.find((c) => !isRecent({ hash: hashBuffer(c.buffer), url: c.source }, recent));
+      if (fresh) {
+        subject = fresh;
+        log.info("asset", `swapped subject to non-recent candidate (avoid repeat)`);
+      } else {
+        log.info("asset", `all subject candidates seen recently, forcing Gemini hook gen`);
+        subject = null;
+      }
     }
   }
-  if (chosenHash) await saveRecentSubjects([...recent, chosenHash]);
+  if (subject) {
+    const entry: RecentEntry = { hash: hashBuffer(subject.buffer), url: subject.source };
+    await saveRecentSubjects([...recent, entry]);
+  }
   const sourceVideoUrls = pageAssets.videoUrls;
   const hookRefs: GeminiReferenceImage[] = [];
   if (subject) hookRefs.push(toRef(subject, "SUBJECT_PHOTO (use this exact face / scene)"));
@@ -242,10 +246,11 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
         const sceneAsset = sceneAssets[idx % sceneAssets.length]!;
         attached = sceneAsset.buffer;
         refs.push(toRef(sceneAsset, "SOURCE_PAGE_IMAGE (place full-bleed at top, real photo from article)"));
-      } else if (!attached && subject) {
-        attached = subject.buffer;
-        refs.push(toRef(subject, "SUBJECT_PHOTO (real photo, fallback)"));
       }
+      // Intentional: do NOT fall back to the hook `subject` buffer for body slides.
+      // That single buffer was shared across all bodies, producing 3 identical thumbnails
+      // (e.g. same brand wordmark on every slide). When no varied source exists, body renders
+      // full-bleed black with Anton-centered text via drawTextExplainer's no-image branch.
       return {
         number: body.slide_number,
         kind: "body" as const,
@@ -269,6 +274,32 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
     path.join(outDir, "caption.txt"),
     `${spec.instagram_caption}\n\n${spec.hashtags.join(" ")}\n\nSource: ${spec.source_url}\n`
   );
+
+  // DM-reply file: when carousel uses "comment KEYWORD" CTA, save the resource we DM back.
+  // Operator opens this file when replies start rolling in, copies to DM.
+  if (spec.cta_keyword && spec.cta_resource) {
+    const dmBody = [
+      `# DM Reply for keyword: ${spec.cta_keyword}`,
+      "",
+      `Source: ${spec.source_url}`,
+      `Carousel: ${spec.carousel_id}`,
+      "",
+      "## Reply to paste",
+      "",
+      `Hey! Thanks for the comment 🙏 here's the full thing:`,
+      "",
+      "---",
+      "",
+      spec.cta_resource,
+      "",
+      "---",
+      "",
+      "If you try it, lmk how it went!",
+      "",
+    ].join("\n");
+    await writeFile(path.join(outDir, "dm-reply.md"), dmBody);
+    log.ok("render", `dm-reply.md written (keyword=${spec.cta_keyword}, ${spec.cta_resource.length} chars)`);
+  }
 
   // Body slide videos: only text_explainer variant gets video bg.
   // stat_card / quote_pull / list_card = image-only (text on black), skip video.
@@ -410,7 +441,7 @@ async function renderOne(
     if (VIDEO_COVER && task.hookComposite.sourceVideoPath) {
       const mp4Path = filePath.replace(/\.png$/, ".mp4");
       try {
-        const overlay = compositeHookTextOverlay(spec.hook_slide);
+        const overlay = compositeHookTextOverlay(spec.hook_slide, spec.topic_category);
         await videoHookOverlay({ sourceVideoPath: task.hookComposite.sourceVideoPath, overlayPng: overlay, outPath: mp4Path, durationSec: 8 });
       } catch (e) {
         log.warn("render", `video cover failed: ${(e as Error).message}`);
@@ -471,24 +502,35 @@ function toRef(asset: ExtractedAsset, label: string): GeminiReferenceImage {
   return { buffer: asset.buffer, mimeType: asset.mimeType, label };
 }
 
-// Track recent subject-image hashes so we don't reuse the same photo across consecutive carousels
+// Track recent subject-image fingerprints (hash + url) so we don't reuse the same photo
 import { createHash } from "node:crypto";
 import { readFile as _readFile, writeFile as _writeFile, mkdir as _mkdir } from "node:fs/promises";
 const RECENT_SUBJECTS_FILE = path.join(config.pipeline.outputDir, ".recent-subjects.json");
-const RECENT_LIMIT = 6;
+const RECENT_LIMIT = 8;
 
-async function loadRecentSubjects(): Promise<string[]> {
+interface RecentEntry { hash: string; url: string }
+
+async function loadRecentSubjects(): Promise<RecentEntry[]> {
   try {
     const raw = await _readFile(RECENT_SUBJECTS_FILE, "utf8");
-    return (JSON.parse(raw) as string[]) ?? [];
+    const parsed = JSON.parse(raw);
+    // Migrate legacy string-array format
+    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "string") {
+      return (parsed as string[]).map((h) => ({ hash: h, url: "" }));
+    }
+    return (parsed as RecentEntry[]) ?? [];
   } catch { return []; }
 }
-async function saveRecentSubjects(hashes: string[]): Promise<void> {
+async function saveRecentSubjects(entries: RecentEntry[]): Promise<void> {
   await _mkdir(path.dirname(RECENT_SUBJECTS_FILE), { recursive: true });
-  await _writeFile(RECENT_SUBJECTS_FILE, JSON.stringify(hashes.slice(-RECENT_LIMIT)));
+  await _writeFile(RECENT_SUBJECTS_FILE, JSON.stringify(entries.slice(-RECENT_LIMIT)));
 }
 function hashBuffer(b: Buffer): string {
-  return createHash("sha1").update(b.subarray(0, Math.min(b.length, 200_000))).digest("hex").slice(0, 16);
+  // Full buffer hash — slower but reliable. Buffers <2MB so still fast.
+  return createHash("sha1").update(b).digest("hex").slice(0, 16);
+}
+function isRecent(entry: { hash: string; url: string }, recent: RecentEntry[]): boolean {
+  return recent.some((r) => r.hash === entry.hash || (entry.url && r.url === entry.url));
 }
 
 function isLikelyPersonName(query: string): boolean {

@@ -58,13 +58,14 @@ export async function extractAccentColor(buf: Buffer): Promise<string> {
   }
 }
 
-// Use Inter as the primary font (bundled via apt fonts-inter in Docker; Mac users
-// can install Inter from rsms.me/inter for matching local renders). Helvetica
-// fallback maps to Liberation Sans inside the container which is metrically
-// compatible with Helvetica.
-const FONT_SANS = "Inter, 'Liberation Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif";
+// Font stack curated from May 2026 IG carousel research:
+// - Hooks (huge condensed): Anton — top "attention-grabbing headline" font of 2026
+// - Body (clean readable): Montserrat / Inter / DM Sans — top social-media body fonts
+// All three bundled in Docker via apt + Google Fonts. Mac fallback to system fonts.
+const FONT_DISPLAY = "Anton, 'Bebas Neue', 'Impact', 'Liberation Sans Bold', 'Helvetica Neue', sans-serif"; // ultra-bold condensed for hooks
+const FONT_SANS = "Montserrat, Inter, 'DM Sans', 'Liberation Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif";
 const FONT_SERIF = "'Liberation Serif', Georgia, 'Times New Roman', serif";
-const FONT_MONO = "'Liberation Mono', Menlo, 'DejaVu Sans Mono', monospace";
+const FONT_MONO = "'DM Mono', 'JetBrains Mono', 'Liberation Mono', Menlo, monospace";
 
 export interface CompositeOptions {
   slide: BodySlide;
@@ -100,18 +101,104 @@ export async function compositeHookBase(opts: HookCompositeOptions, style: HookS
   return { buffer: layout.canvas.toBuffer("image/png"), photoH: layout.photoH, style };
 }
 
-export function compositeHookTextOverlay(hook: HookSlide): Buffer {
+const TOPIC_KICKER: Record<string, string> = {
+  model_release: "AI · MODEL DROP",
+  research: "AI · RESEARCH",
+  controversy: "AI · DRAMA",
+  tool: "AI · NEW TOOL",
+  business: "AI · BUSINESS",
+};
+
+export function compositeHookTextOverlay(hook: HookSlide, topicCategory?: string): Buffer {
+  // Split layout: top half = transparent (source video shows through),
+  // bottom half = SOLID black panel + headline. Mirrors body overlay so text
+  // never fights a busy video background. Picked per May 2026 IG research:
+  // "scrim / solid panel behind text is the reliable readability fix".
   const canvas: Canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
-  // bottom dark gradient for legibility
-  const grad = ctx.createLinearGradient(0, H * 0.3, 0, H);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(0.55, "rgba(0,0,0,0.7)");
-  grad.addColorStop(1, "rgba(0,0,0,0.92)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-  drawOverlayHeadline(ctx, hook);
+
+  const PHOTO_H = Math.round(H * 0.52);
+  // Bridge gradient: smooths seam between video top and black panel.
+  const bridge = ctx.createLinearGradient(0, PHOTO_H - 120, 0, PHOTO_H + 40);
+  bridge.addColorStop(0, "rgba(0,0,0,0)");
+  bridge.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.fillStyle = bridge;
+  ctx.fillRect(0, PHOTO_H - 120, W, 160);
+  // Solid black panel, fully opaque so text always 100% legible.
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(0, PHOTO_H, W, H - PHOTO_H);
+
+  const kicker = topicCategory ? (TOPIC_KICKER[topicCategory] ?? "AI") : "AI";
+  drawVideoHookPanel(ctx, hook, PHOTO_H, kicker);
   return canvas.toBuffer("image/png");
+}
+
+function drawKickerTag(ctx: SKRSContext2D, label: string, y: number): void {
+  // Centered uppercase kicker w/ horizontal lines on either side ("— TECHNOLOGY —").
+  ctx.font = `700 22px ${FONT_MONO}`;
+  ctx.fillStyle = WHITE;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const labelW = ctx.measureText(label).width;
+  ctx.fillText(label, W / 2, y);
+  // Dashes on either side
+  const gap = 24;
+  const lineLen = 80;
+  ctx.strokeStyle = WHITE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - labelW / 2 - gap, y);
+  ctx.lineTo(W / 2 - labelW / 2 - gap - lineLen, y);
+  ctx.moveTo(W / 2 + labelW / 2 + gap, y);
+  ctx.lineTo(W / 2 + labelW / 2 + gap + lineLen, y);
+  ctx.stroke();
+  ctx.textAlign = "left";
+}
+
+function drawVideoHookPanel(ctx: SKRSContext2D, hook: HookSlide, photoH: number, kicker: string): void {
+  const headline = hook.headline.toUpperCase();
+  const highlights = hook.highlight_phrases.map((p) => p.toUpperCase());
+  // Kicker tag sits at top of panel, headline starts below.
+  drawKickerTag(ctx, kicker, photoH + 36);
+  const panelTop = photoH + 76;
+  const panelBottom = H - 140;
+  const panelH = panelBottom - panelTop;
+  const maxW = W - PAD * 2;
+
+  let fontSize = 96;
+  let lines: string[] = [];
+  let lineH = 0;
+  for (; fontSize >= 44; fontSize -= 4) {
+    ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
+    lines = wrapLines(ctx, headline, maxW);
+    lineH = fontSize * 0.98;
+    if (lines.length * lineH <= panelH) break;
+  }
+  ctx.textBaseline = "top";
+  const totalH = lines.length * lineH;
+  const startY = panelTop + (panelH - totalH) / 2;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line) continue;
+    drawHighlightedLine(ctx, line, highlights, W / 2, startY + i * lineH, fontSize);
+  }
+
+  // Sub tag (purple) below headline, big enough to read on mobile.
+  if (hook.sub_tagline) {
+    ctx.font = `800 30px ${FONT_SANS}`;
+    ctx.fillStyle = PURPLE();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(hook.sub_tagline.toUpperCase(), W / 2, H - 86);
+  }
+
+  // Swipe indicator, larger + brighter than before.
+  ctx.font = `700 26px ${FONT_MONO}`;
+  ctx.fillStyle = WHITE;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("SWIPE FOR MORE  →", W / 2, H - 44);
+  ctx.textAlign = "left";
 }
 
 export function compositeBodyTextOverlay(slide: BodySlide, total: number): Buffer {
@@ -218,14 +305,14 @@ function drawOverlayHeadline(ctx: SKRSContext2D, hook: HookSlide): void {
   const headline = hook.headline.toUpperCase();
   const highlights = hook.highlight_phrases.map((p) => p.toUpperCase());
 
-  let fontSize = 80;
+  let fontSize = 110;
   let lines: string[] = [];
   let lineH = 0;
   const maxW = W - PAD * 2;
-  for (; fontSize >= 44; fontSize -= 4) {
-    ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+  for (; fontSize >= 56; fontSize -= 4) {
+    ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
     lines = wrapLines(ctx, headline, maxW);
-    lineH = fontSize * 1.05;
+    lineH = fontSize * 0.96;
     if (lines.length * lineH <= H * 0.42) break;
   }
   ctx.textBaseline = "top";
@@ -260,13 +347,13 @@ function drawMagazineHeadline(ctx: SKRSContext2D, hook: HookSlide): void {
   const panelTop = photoH + 24;
   const panelH = H - panelTop - 60;
   const maxW = W - PAD * 2;
-  let fontSize = 60;
+  let fontSize = 84;
   let lines: string[] = [];
   let lineH = 0;
-  for (; fontSize >= 32; fontSize -= 3) {
-    ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+  for (; fontSize >= 40; fontSize -= 3) {
+    ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
     lines = wrapLines(ctx, headline, maxW);
-    lineH = fontSize * 1.1;
+    lineH = fontSize * 1.0;
     if (lines.length * lineH <= panelH) break;
   }
   ctx.textBaseline = "top";
@@ -326,13 +413,13 @@ function drawHookHeadline(ctx: SKRSContext2D, hook: HookSlide, photoBottomY: num
   const maxW = W - PAD * 2;
 
   // Auto-fit font size: try big, shrink if it overflows
-  let fontSize = 88;
+  let fontSize = 120;
   let lines: string[] = [];
   let lineH = 0;
-  for (; fontSize >= 44; fontSize -= 4) {
-    ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+  for (; fontSize >= 56; fontSize -= 4) {
+    ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
     lines = wrapLines(ctx, headline, maxW);
-    lineH = fontSize * 1.05;
+    lineH = fontSize * 0.98;
     if (lines.length * lineH <= panelH) break;
   }
 
@@ -356,7 +443,7 @@ function drawHighlightedLine(
   y: number,
   fontSize: number
 ): void {
-  ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+  ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
   ctx.textBaseline = "top";
   const lineWidth = ctx.measureText(line).width;
   let x = centerX - lineWidth / 2;
@@ -439,6 +526,43 @@ async function drawTextExplainer(ctx: SKRSContext2D, opts: CompositeOptions): Pr
   const emphasis = slide.body_emphasis_phrases ?? [];
   const isProductScreenshot = !!slide.product_screenshot_query && !!attachedImage;
 
+  // No image available → use full-bleed black with text vertically centered (no awkward empty zone)
+  if (!attachedImage && !isProductScreenshot) {
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "top";
+
+    // Vertically center: estimate total content height first
+    const maxW = W - PAD * 2;
+    let titleSize = 64;
+    let titleLines: string[] = [];
+    for (; titleSize >= 36; titleSize -= 2) {
+      ctx.font = `900 ${titleSize}px ${FONT_SANS}`;
+      titleLines = wrapLines(ctx, headline, maxW);
+      const titleH = titleLines.length * titleSize * 1.1;
+      if (titleH <= H * 0.35) break;
+    }
+    const titleLineH = titleSize * 1.1;
+    const titleH = titleLines.length * titleLineH;
+    const bodyFontSize = 32;
+    const bodyLineH = 42;
+    // Rough body line count
+    ctx.font = `500 ${bodyFontSize}px ${FONT_SANS}`;
+    const bodyLineCount = wrapLines(ctx, text, maxW).length;
+    const bodyH = bodyLineCount * bodyLineH;
+    const totalH = titleH + 40 + bodyH;
+    const startY = Math.max(PAD, (H - totalH) / 2);
+
+    ctx.font = `900 ${titleSize}px ${FONT_SANS}`;
+    for (let i = 0; i < titleLines.length; i += 1) {
+      const line = titleLines[i];
+      if (!line) continue;
+      drawHighlightedHeadlineLine(ctx, line, highlights, PAD, startY + i * titleLineH, titleSize);
+    }
+    drawEmphasizedParagraph(ctx, text, emphasis, PAD, startY + titleH + 40, maxW, bodyFontSize, bodyLineH);
+    return;
+  }
+
   const PHOTO_H = Math.round(H * 0.5);
 
   if (isProductScreenshot && attachedImage) {
@@ -483,9 +607,6 @@ async function drawTextExplainer(ctx: SKRSContext2D, opts: CompositeOptions): Pr
     bridge.addColorStop(1, "rgba(0,0,0,1)");
     ctx.fillStyle = bridge;
     ctx.fillRect(0, PHOTO_H - 100, W, 130);
-  } else {
-    ctx.fillStyle = "#111";
-    ctx.fillRect(0, 0, W, PHOTO_H);
   }
 
   ctx.fillStyle = BLACK;
@@ -637,15 +758,15 @@ function drawStatCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const fullText = unitPart ? `${numPart} ${unitPart}` : numPart;
 
   const maxW = W - PAD * 2;
-  // Auto-fit: try 280, shrink in 8pt steps to 80 until full text fits
-  let fontSize = 280;
+  // Auto-fit: try 360 (Anton condensed packs more), shrink to 80 until full text fits
+  let fontSize = 360;
   for (; fontSize >= 80; fontSize -= 8) {
-    ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+    ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
     if (ctx.measureText(fullText).width <= maxW) break;
   }
 
   // If single line still doesn't fit, wrap the stat itself
-  ctx.font = `900 ${fontSize}px ${FONT_SANS}`;
+  ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
   const fits = ctx.measureText(fullText).width <= maxW;
   const cy = H * 0.42;
   ctx.textBaseline = "middle";
@@ -705,9 +826,21 @@ function drawQuotePull(ctx: SKRSContext2D, opts: CompositeOptions): void {
 
   if (attr) {
     ctx.fillStyle = DIM;
-    ctx.font = `700 24px ${FONT_MONO}`;
     ctx.textAlign = "left";
-    ctx.fillText(attr, PAD, qEnd + 40);
+    // Auto-fit + wrap. Attribution can be long (full name + title + source). Shrink until fits, then wrap.
+    const maxW = W - PAD * 2;
+    let fontSize = 24;
+    for (; fontSize >= 16; fontSize -= 2) {
+      ctx.font = `700 ${fontSize}px ${FONT_MONO}`;
+      if (ctx.measureText(attr).width <= maxW) break;
+    }
+    ctx.font = `700 ${fontSize}px ${FONT_MONO}`;
+    if (ctx.measureText(attr).width <= maxW) {
+      ctx.fillText(attr, PAD, qEnd + 40);
+    } else {
+      // Still overflowing → wrap to 2 lines
+      wrapText(ctx, attr, PAD, qEnd + 40, maxW, fontSize + 6);
+    }
   }
 }
 
@@ -716,10 +849,10 @@ function drawListCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const title = (opts.slide.list_title ?? opts.slide.headline).toUpperCase();
 
   ctx.fillStyle = PURPLE();
-  ctx.font = `900 56px ${FONT_SANS}`;
+  ctx.font = `78px ${FONT_DISPLAY}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  wrapText(ctx, title, PAD, PAD, W - PAD * 2, 64);
+  wrapText(ctx, title, PAD, PAD, W - PAD * 2, 84);
 
   let y = PAD + 200;
   ctx.font = `500 38px ${FONT_SANS}`;

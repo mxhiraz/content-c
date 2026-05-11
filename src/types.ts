@@ -40,7 +40,7 @@ export const BodySlideSchema = z.object({
   layout_variant: LayoutVariant.default("text_explainer"),
   product_screenshot_query: z.string().nullable().optional().transform((v) => v ?? undefined),
   stat_value: z.string().max(40).nullable().optional().transform((v) => v ?? undefined),
-  stat_caption: z.string().max(80).nullable().optional().transform((v) => v ?? undefined),
+  stat_caption: z.string().max(140).nullable().optional().transform((v) => v ?? undefined),
   pull_quote: z.string().max(200).nullable().optional().transform((v) => v ?? undefined),
   quote_attribution: z.string().max(80).nullable().optional().transform((v) => v ?? undefined),
   list_items: z.array(z.string().min(1).max(120)).max(6).nullable().optional().transform((v) => v ?? undefined),
@@ -74,6 +74,12 @@ export const SlideSpecSchema = z.object({
   related_video_urls: z.array(z.string().url()).default([]),
   entity_x_handles: z.array(z.string()).default([]),
   carousel_format: z.string().optional(),
+  carousel_type: z.string().optional(),
+  psych_trigger: z.string().optional(),
+  // CTA reply payload — set when carousel asks viewers to "comment KEYWORD to get X".
+  // We write these to dm-reply.md so the human knows what to DM when replies come in.
+  cta_keyword: z.string().max(30).nullable().optional().transform((v) => v ?? undefined),
+  cta_resource: z.string().max(8000).nullable().optional().transform((v) => v ?? undefined),
 });
 
 export type SlideSpec = z.infer<typeof SlideSpecSchema>;

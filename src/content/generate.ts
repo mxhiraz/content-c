@@ -16,7 +16,7 @@ export class InsufficientSourceError extends Error {
   }
 }
 
-export async function generateSlideSpec(article: Article): Promise<SlideSpec> {
+export async function generateSlideSpec(article: Article, feed?: string): Promise<SlideSpec> {
   const maxSlides = config.pipeline.maxSlides;
   const expectedBody = Math.max(1, maxSlides - 1);
   log.step("content", `streaming SlideSpec (${maxSlides} slides total) for "${article.title.slice(0, 60)}"`);
@@ -28,11 +28,15 @@ export async function generateSlideSpec(article: Article): Promise<SlideSpec> {
   const eligibleFormats = await pickEligibleFormats();
   log.info("content", `eligible formats: ${eligibleFormats.join(", ")}`);
 
+  const systemText = buildSystemPrompt(maxSlides, playbook, eligibleFormats);
+  // Cache the long static system prompt (~8-12k tokens including playbook + format catalog).
+  // 90% input-token discount on cache hits when system reused within 5 min — saves big on
+  // multi-feed bursts (user firing all "Send Now" buttons) and any retry path.
   const stream = anthropic.messages.stream({
     model: config.models.contentModel,
     max_tokens: 4096,
-    system: buildSystemPrompt(maxSlides, playbook, eligibleFormats),
-    messages: [{ role: "user", content: buildUserPrompt(article, config.brand.handle, maxSlides) }],
+    system: [{ type: "text", text: systemText, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: buildUserPrompt({ ...article, feed }, config.brand.handle, maxSlides) }],
   });
 
   let buf = "";
@@ -43,7 +47,10 @@ export async function generateSlideSpec(article: Article): Promise<SlideSpec> {
 
   const final = await stream.finalMessage();
   log.newline();
-  log.ok("content", `stop_reason=${final.stop_reason} input_tok=${final.usage.input_tokens} output_tok=${final.usage.output_tokens}`);
+  const u = final.usage as typeof final.usage & { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+  const cacheW = u.cache_creation_input_tokens ?? 0;
+  const cacheR = u.cache_read_input_tokens ?? 0;
+  log.ok("content", `stop_reason=${final.stop_reason} input=${final.usage.input_tokens} output=${final.usage.output_tokens} cache_w=${cacheW} cache_r=${cacheR}`);
 
   const json = extractJson(buf);
 
@@ -128,36 +135,24 @@ function killDashes(s: string): string {
 }
 
 function stripDashes(c: Record<string, unknown>): void {
-  const clean = (obj: Record<string, unknown>, key: string) => {
-    const v = obj[key];
-    if (typeof v === "string") obj[key] = killDashes(v);
+  // Recursively walk every string: strip em/en dashes + trailing ellipsis (looks like "...")
+  const cleanString = (s: string): string => {
+    let out = killDashes(s);
+    // Strip trailing literal "..." or unicode "…" plus any whitespace before
+    out = out.replace(/[.\s]*(\.\.\.|…)\s*$/g, "");
+    return out;
   };
-  const cleanArr = (obj: Record<string, unknown>, key: string) => {
-    const v = obj[key];
-    if (Array.isArray(v)) obj[key] = v.map((x) => (typeof x === "string" ? killDashes(x) : x));
-  };
-
-  const hook = c.hook_slide as Record<string, unknown> | undefined;
-  if (hook) {
-    clean(hook, "headline");
-    clean(hook, "sub_tagline");
-    cleanArr(hook, "highlight_phrases");
-    cleanArr(hook, "ticker_phrases");
-  }
-  const cta = c.cta_slide as Record<string, unknown> | undefined;
-  if (cta) {
-    clean(cta, "headline");
-    cleanArr(cta, "highlight_phrases");
-  }
-  const bodies = c.body_slides as Record<string, unknown>[] | undefined;
-  if (Array.isArray(bodies)) {
-    for (const b of bodies) {
-      clean(b, "headline");
-      clean(b, "body_text");
-      cleanArr(b, "highlight_phrases");
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") return cleanString(node);
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      for (const k of Object.keys(obj)) obj[k] = walk(obj[k]);
+      return obj;
     }
-  }
-  clean(c, "instagram_caption");
+    return node;
+  };
+  walk(c);
 }
 
 function softTruncate(c: Record<string, unknown>): void {
@@ -189,7 +184,7 @@ function softTruncate(c: Record<string, unknown>): void {
       clipKey(b, "headline", 100);
       clipKey(b, "body_text", 280);
       clipKey(b, "stat_value", 40);
-      clipKey(b, "stat_caption", 80);
+      clipKey(b, "stat_caption", 140);
       clipKey(b, "pull_quote", 200);
       clipKey(b, "quote_attribution", 80);
       clipKey(b, "list_title", 80);
@@ -202,8 +197,13 @@ function softTruncate(c: Record<string, unknown>): void {
 
 function clip(s: string, max: number): string {
   if (s.length <= max) return s;
-  const cut = s.slice(0, max - 1).replace(/[\s,;:.\-—]+$/, "");
-  return `${cut}…`;
+  // Hard cut at last sentence boundary or last whitespace before max. No ellipsis (renders as "..." on slides).
+  const slice = s.slice(0, max);
+  const lastPunct = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  if (lastPunct > max * 0.6) return slice.slice(0, lastPunct + 1);
+  const lastSpace = slice.lastIndexOf(" ");
+  if (lastSpace > max * 0.6) return slice.slice(0, lastSpace);
+  return slice;
 }
 
 function enforceQualityGates(spec: SlideSpec, expectedBody: number): void {
@@ -229,5 +229,10 @@ function enforceQualityGates(spec: SlideSpec, expectedBody: number): void {
   }
   if (spec.hook_slide.headline !== spec.hook_slide.headline.toUpperCase()) {
     throw new Error("Hook headline must be uppercase");
+  }
+  // Per May 2026 IG research: hooks over 10 words tank swipe-through. Soft-warn at 12.
+  const hookWords = spec.hook_slide.headline.trim().split(/\s+/).length;
+  if (hookWords > 12) {
+    log.warn("content", `hook is ${hookWords} words (target ≤10). Reads heavy on mobile.`);
   }
 }

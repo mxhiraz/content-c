@@ -52,7 +52,7 @@ export function startWorker(): Worker<RenderJob> {
 
       let spec;
       try {
-        spec = await generateSlideSpec(article);
+        spec = await generateSlideSpec(article, data.feed);
       } catch (e) {
         if (e instanceof InsufficientSourceError) return { skipped: "insufficient_source" };
         throw e;

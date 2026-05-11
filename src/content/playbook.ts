@@ -73,11 +73,13 @@ Return ONE JSON object verbatim, no prose, no markdown fences:
 }`;
 
   log.step("playbook", "refreshing playbook via Claude + web_search");
+  // Use Haiku 4.5 here — playbook is structural copy research, weekly cron, doesn't need Sonnet.
+  // Haiku 4.5 = 3× cheaper than Sonnet 4.6 ($1/$5 vs $3/$15 per M tokens).
   const stream = anthropic.messages.stream({
-    model: config.models.contentModel,
-    max_tokens: 6000,
+    model: config.models.scoringModel,
+    max_tokens: 4000,
     system: sys,
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 }],
     messages: [{ role: "user", content: `Refresh the ${niche} viral-copy playbook for today.` }],
   });
   let buf = "";

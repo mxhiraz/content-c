@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu \
       fonts-inter \
       fontconfig \
+      wget \
       libnss3 \
       libxss1 \
       libasound2 \
@@ -45,7 +46,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pipx ensurepath && pipx install yt-dlp
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Refresh font cache so canvas/skia can find Inter
+# Install Anton (hook display) + Montserrat (body, all weights) + DM Sans (alt body) from Google Fonts
+# Bookworm apt has no fonts-montserrat, pull TTFs directly from google/fonts repo.
+RUN mkdir -p /usr/share/fonts/truetype/anton /usr/share/fonts/truetype/montserrat /usr/share/fonts/truetype/dm-sans \
+ && wget -q -O /usr/share/fonts/truetype/anton/Anton-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/montserrat/Montserrat-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Regular.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/montserrat/Montserrat-Medium.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Medium.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/montserrat/Montserrat-Bold.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/montserrat/Montserrat-ExtraBold.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-ExtraBold.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/montserrat/Montserrat-Black.ttf "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Black.ttf" \
+ && wget -q -O /usr/share/fonts/truetype/dm-sans/DMSans-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/dmsans/DMSans%5Bopsz%2Cwght%5D.ttf" \
+ || echo "some font downloads failed, container will use fallbacks"
+
+# Refresh font cache so canvas/skia can find Inter / Anton / Montserrat / DM Sans
 RUN fc-cache -f -v > /dev/null 2>&1 || true
 
 # Tell whatsapp-web.js / puppeteer to use system chromium (no download)
@@ -57,7 +70,11 @@ WORKDIR /app
 
 # Install node deps (cached layer)
 COPY package.json package-lock.json* ./
-RUN npm install --include=dev
+# Retry on flaky network (ECONNRESET from npm registry)
+RUN npm config set fetch-retries 5 \
+ && npm config set fetch-retry-mintimeout 20000 \
+ && npm config set fetch-retry-maxtimeout 120000 \
+ && npm install --include=dev --no-audit --no-fund
 
 # Copy source
 COPY tsconfig.json ./

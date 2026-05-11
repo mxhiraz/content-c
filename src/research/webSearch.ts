@@ -30,13 +30,39 @@ const SYSTEM = `You are a viral-content scout for an AI/tech Instagram page. You
 
 PHASE 1 — DISCOVER what's going VIRAL in AI right now (do this BEFORE picking stories)
 Do NOT skip this phase. Do not cache assumptions. Search live for:
-- HN front page (news.ycombinator.com) — what AI/tech stories are above 300 upvotes in last 24h? what verbs/topics dominate?
-- r/LocalLLaMA, r/singularity, r/MachineLearning hot tab — what are the top posts > 500 upvotes? what's the recurring topic?
-- AI Twitter / X — what are sama, dario, karpathy, ylecun, kimmonismus, iruletheworldmo, aidan_mclau, swyx posting and getting amplified for in last 48h?
-- Hugging Face daily papers — what's spiking in upvotes today?
-- GitHub trending — which AI repos are gaining 1k+ stars in 24h?
-- Techmeme — what's at the top of the AI section?
-- Specific viral patterns to scan for: new model drops, leaked benchmarks, demos that look impossible, founder drama, big-tech vs startup, agent demos that did the impossible, layoffs, lawsuits, jailbreaks, regulatory bombs.
+
+PRIMARY DISCOVERY SOURCES — search ALL of these every run, mix freely:
+A) Broad AI aggregators / newsletters (user-picked, multi-vendor):
+- rundown.ai / therundown.ai — The Rundown AI daily
+- joinsuperhuman.ai — Superhuman AI daily
+- theneuron.ai — The Neuron daily
+- marktechpost.com — AI research + tools
+- venturebeat.com/ai — VentureBeat AI
+- bensbites.com — Ben's Bites daily
+- alphasignal.ai — AlphaSignal daily
+- tldr.tech/ai — TLDR AI daily
+- aiweekly.co — weekly digest
+- smol.ai/news — Smol AI news
+B) Community-vote aggregators (broad-tech, AI floats up):
+- news.ycombinator.com + hn.algolia.com — past 24h, points > 300
+- techmeme.com / techmeme.com/river — top tech aggregator
+- reddit.com — r/LocalLLaMA, r/singularity, r/MachineLearning, r/ChatGPT, r/technology — HOT, > 500 upvotes
+- producthunt.com — AI tools launching today
+C) Editorial outlets (broad tech, AI section):
+- theverge.com/ai-artificial-intelligence
+- arstechnica.com — AI tag
+- techcrunch.com/category/artificial-intelligence
+- wired.com tag/artificial-intelligence
+- technologyreview.com — AI category
+- theinformation.com — AI section (paywall, headlines OK)
+- bloomberg.com — AI tag
+D) Research signal:
+- huggingface.co/papers — top upvoted today
+- arxiv.org cs.AI / cs.LG / cs.CL submissions today
+- github trending — AI repos gaining 1k+ stars in 24h
+E) Individual voices (LAST RESORT, biases to fixed list — only check if A-D dry):
+- X posts from sama, dario_amodei, karpathy, ylecun, kimmonismus, iruletheworldmo, aidan_mclau, swyx, simonw (last 48h)
+Specific viral patterns to scan for across all sources: new model drops, leaked benchmarks, demos that look impossible, founder drama, big-tech vs startup, agent demos that did the impossible, layoffs, lawsuits, jailbreaks, regulatory bombs.
 
 After Phase 1, write down (internally, do not output) 5-8 VIRAL THEMES dominating the AI conversation right now. Examples (illustrative only — find the REAL ones today):
 - "Anthropic shipped Claude 4.7 with multi-day agent runs"
@@ -46,18 +72,22 @@ After Phase 1, write down (internally, do not output) 5-8 VIRAL THEMES dominatin
 
 PHASE 2 — for each viral theme, FIND THE BEST NEWS ARTICLE that captures it
 - Use web_search to land on the primary-source URL for each theme.
-- Tier 1 (preferred): anthropic.com, openai.com, deepmind.google, ai.meta.com, mistral.ai, x.ai, huggingface.co/papers, arxiv.org
-- Tier 2 (acceptable): techmeme, theinformation, bloomberg, ft, wsj, reuters, nyt, verge, techcrunch, arstechnica, wired, technologyreview
-- Tier 3 (community signal, never as PRIMARY url): HN, reddit, X
+- DISCOVERY uses broad aggregators (Phase 1). DESTINATION URL points to whoever wrote the original story.
 - For each theme: also collect related image URLs, video URLs, and entity X handles you ACTUALLY saw.
+
+CRITICAL ANTI-BIAS RULE
+- NEVER discover stories by searching a single lab's site (anthropic.com/news, openai.com/news, deepmind.google/blog). Those pages ONLY talk about that lab — searching them biases the feed to one company. We've seen this fail (3 Anthropic stories in a row).
+- ALWAYS discover via community-vote aggregators (HN, Reddit r/technology r/singularity r/MachineLearning, Techmeme, Verge, Ars), then FOLLOW the link to the primary source for the URL.
+- A lab blog is a valid DESTINATION URL once a community surface picked it up, but never a DISCOVERY entry point.
 
 If Phase 1 surfaces only weak/dead viral themes (slow news week), say so by returning fewer stories with lower newsworthiness. Don't manufacture virality.
 
-SOURCE PRIORITY (very strict)
-- TIER 1 (always prefer): anthropic.com/news, openai.com/news, deepmind.google/blog, ai.meta.com, mistral.ai/news, x.ai, huggingface.co/papers, arxiv.org. Primary lab blogs and official announcements only.
-- TIER 2 (high quality reporting): techmeme.com, theinformation.com, bloomberg.com, ft.com, wsj.com, reuters.com, nytimes.com, theverge.com, techcrunch.com, arstechnica.com, wired.com, technologyreview.com.
-- TIER 3 (community signal, only as supporting evidence, never as the primary source): news.ycombinator.com, reddit.com/r/LocalLLaMA, reddit.com/r/MachineLearning.
-- BANNED (NEVER pick the URL from these): generic SEO content farms, AI-generated summary blogs, medium.com low-effort posts, dev.to listicles, marktechpost.com aggregator pages, analytics-india-magazine.com clones, "top 10 AI tools" SEO pages, sponsored/PR-wire copies, contentdrips/postnitro template posts, any URL whose title is "X just launched a new AI tool you need to know" without a primary source link.
+SOURCE PRIORITY (for the FINAL url field per story, NOT for discovery)
+- TIER 1 (preferred for the destination URL once a community source surfaced the story): the original primary publisher — could be a lab blog (anthropic.com/news, openai.com/news, deepmind.google/blog, ai.meta.com, mistral.ai/news, x.ai, cohere.com, qwen, deepseek), independent outlets (theverge.com, arstechnica.com, theinformation.com, bloomberg.com, ft.com, wsj.com, reuters.com, nytimes.com, technologyreview.com, wired.com), or research preprint pages (arxiv.org, huggingface.co/papers).
+- TIER 2 (acceptable destination): techcrunch.com, techmeme.com, smaller indie tech blogs.
+- TIER 3 (signal-only, never the destination URL): news.ycombinator.com discussion pages, reddit.com threads, X posts. Use these to FIND the story; follow their outbound link for the URL.
+- DIVERSITY MANDATE: across the returned stories per batch, MUST cover ≥3 different companies/labs/people. If 3+ stories are Anthropic, REPLACE with stories about other labs (OpenAI, Google DeepMind, Meta, Mistral, xAI, DeepSeek, Qwen, Cohere, AI21, NVIDIA, indie startups). Single-company bias = auto-reject the batch.
+- BANNED (NEVER pick the URL from these): SEO content farms, AI-generated summary blogs, medium.com low-effort posts, dev.to listicles, marktechpost.com aggregator pages, analytics-india-magazine.com clones, "top 10 AI tools" SEO pages, sponsored/PR-wire copies, contentdrips/postnitro template posts, any URL whose title is "X just launched a new AI tool you need to know" without a primary source link.
 
 For each story, the "url" field MUST point to the most primary source you can find. If you read about an OpenAI release on TechCrunch, follow the link to openai.com/news and use THAT url. If a story exists only on a banned source, drop the story.
 
@@ -74,7 +104,7 @@ SELECTION CRITERIA (in order)
 
 2. CROSS-VALIDATED TRENDING — story shows up in 2+ Tier-1/Tier-2 sources in 24h. Single-source = -30% score penalty.
 3. Primary-source provenance (Tier 1 > Tier 2)
-4. Recency: prefer last 48 hours, hard cap 5 days
+4. RECENCY: prefer last 24h, hard cap 72 hours. Anything older than 72h MUST be rejected. Today's date is the reference. If you can't find enough fresh stories, return fewer candidates rather than back-fill with stale stuff. ALWAYS include the published_hint field with a real ISO date or "today"/"yesterday"/"X hours ago" — without it, the date filter can't verify and the story slips through.
 5. Visual carousel-ability: clear protagonist (company, person, model, product, robot, demo screen)
 
 DIVERSITY: do NOT return 5 stories that are all "OpenAI does X". Mix companies, types of news, and angles. Force variety across categories.
@@ -148,9 +178,11 @@ CRITICAL: never invent URLs. If web_search did not surface a clickable URL, retu
 
   const stream = anthropic.messages.stream({
     model: config.models.contentModel,
-    max_tokens: 16384,
-    system: SYSTEM,
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 10 }],
+    max_tokens: 8192,
+    // Cache the long static SYSTEM block (~3.5k tokens). 90% discount on cached reads
+    // when same system reused within 5 min (e.g. multiple feeds fired in quick succession).
+    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
     messages: [{ role: "user", content: userMsg }],
   });
 
@@ -196,7 +228,10 @@ CRITICAL: never invent URLs. If web_search did not surface a clickable URL, retu
 
   const final = await stream.finalMessage();
   log.newline();
-  log.ok("research", `stop_reason=${final.stop_reason} searches=${searchCount} input_tok=${final.usage.input_tokens} output_tok=${final.usage.output_tokens}`);
+  const u = final.usage as typeof final.usage & { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+  const cacheW = u.cache_creation_input_tokens ?? 0;
+  const cacheR = u.cache_read_input_tokens ?? 0;
+  log.ok("research", `stop_reason=${final.stop_reason} searches=${searchCount} input=${final.usage.input_tokens} output=${final.usage.output_tokens} cache_w=${cacheW} cache_r=${cacheR}`);
 
   const json = extractJson(textBuf);
   const parsed = ListSchema.safeParse(json);
@@ -221,7 +256,19 @@ CRITICAL: never invent URLs. If web_search did not surface a clickable URL, retu
     s.related_image_urls = verified.filter((u): u is string => !!u);
   }));
 
-  const filtered = parsed.data.stories.filter((s) => !isBannedDomain(s.url));
+  // Drop banned domains AND stories older than MAX_STORY_AGE_HOURS (default 72h)
+  const maxAgeHours = Number.parseInt(process.env.MAX_STORY_AGE_HOURS ?? "72", 10);
+  const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
+  const now = Date.now();
+  const filtered = parsed.data.stories.filter((s) => {
+    if (isBannedDomain(s.url)) return false;
+    const pub = parseDate(s.published_hint);
+    if (pub && now - pub.getTime() > maxAgeMs) {
+      log.warn("research", `dropping stale story (${Math.round((now - pub.getTime()) / 3600_000)}h > ${maxAgeHours}h cap): ${s.title.slice(0, 60)}`);
+      return false;
+    }
+    return true;
+  });
   const sorted = [...filtered].sort((a, b) => {
     const tierA = a.source_tier === 1 ? 1.0 : 0.7;
     const tierB = b.source_tier === 1 ? 1.0 : 0.7;
@@ -243,7 +290,7 @@ CRITICAL: never invent URLs. If web_search did not surface a clickable URL, retu
 }
 
 const BANNED_DOMAINS = [
-  "marktechpost.com",
+  // marktechpost.com — un-banned per user 2026-05-11: kept as approved AI-focused outlet
   "analyticsindiamag.com",
   "analyticsvidhya.com",
   "geekflare.com",
