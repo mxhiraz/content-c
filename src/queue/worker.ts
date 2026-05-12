@@ -15,16 +15,21 @@ export function startWorker(): Worker<RenderJob> {
   const w = new Worker<RenderJob>(
     QUEUE_NAME,
     async (job: Job<RenderJob>) => {
-      // Stale-job guard: skip slot jobs that were scheduled >5 min ago (caught up after a long downtime)
+      // Stale-job guard: skip slot jobs scheduled long ago (caught up after long downtime).
+      // 30min window handles container restarts on Azure + minor clock drift.
       const isScheduled = job.data.url === "_scheduled" || job.data.url === "_newsletter" || job.name === "newsletter-watch" || job.name.startsWith("slot-");
       if (isScheduled) {
         const ageMs = Date.now() - job.timestamp;
-        if (ageMs > 5 * 60_000) {
-          log.warn("worker", `skipping stale ${job.name} (age ${(ageMs / 60000).toFixed(1)}min)`);
+        log.step("worker", `cron fire: ${job.name} (age ${(ageMs / 1000).toFixed(0)}s) — running`);
+        if (ageMs > 30 * 60_000) {
+          log.warn("worker", `skipping stale ${job.name} (age ${(ageMs / 60000).toFixed(1)}min > 30min cap)`);
           return { skipped: "stale", ageMin: Math.round(ageMs / 60000) };
         }
         const slotIdx = (job.data as unknown as { _slotIdx?: number })._slotIdx;
-        return await handleScheduledJob(job.name, slotIdx);
+        const result = await handleScheduledJob(job.name, slotIdx);
+        if (result.skipped) log.warn("worker", `cron ${job.name} skipped: ${result.skipped}`);
+        else log.ok("worker", `cron ${job.name} enqueued ${result.enqueued} jobs`);
+        return result;
       }
 
       const data = job.data;

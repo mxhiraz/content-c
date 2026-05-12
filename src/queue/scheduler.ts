@@ -50,6 +50,17 @@ export async function registerSchedules(): Promise<void> {
     }
   );
   log.ok("scheduler", `registered newsletter watcher: ${NEWSLETTER_INTERVAL} (${SCHEDULE_TZ})`);
+
+  // Heartbeat: prove scheduler + worker stay alive between fires. Logs next fire times
+  // every 15 min so Azure deploys show clearly whether crons are queued correctly.
+  setInterval(() => {
+    void carouselQueue.getRepeatableJobs().then((jobs) => {
+      const lines = jobs
+        .map((j) => `${j.name}@${j.next ? new Date(j.next).toISOString() : "unscheduled"}`)
+        .join(", ");
+      log.info("scheduler", `heartbeat: now=${new Date().toISOString()} tz=${SCHEDULE_TZ} next_fires=[${lines}]`);
+    }).catch((e) => log.warn("scheduler", `heartbeat failed: ${(e as Error).message}`));
+  }, 15 * 60_000).unref();
 }
 
 /**

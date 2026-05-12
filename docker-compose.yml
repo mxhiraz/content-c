@@ -16,6 +16,10 @@ services:
       - redis
     environment:
       REDIS_URL: redis://redis:6379
+      # Force container clock TZ. Without this Azure VM defaults to UTC and bullmq
+      # cron tz=Asia/Kolkata can race against date calls in the codebase. Match the
+      # SCHEDULE_TZ in .env. tzdata is pre-installed in node:bookworm-slim.
+      TZ: ${SCHEDULE_TZ:-Asia/Kolkata}
     env_file:
       - .env
     ports:
