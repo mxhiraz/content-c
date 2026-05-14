@@ -1,33 +1,38 @@
 {{stylePreamble}}
 
-REFERENCE STYLE: a viral AI/tech news Instagram cover. Photoreal portrait foreground, recognizable brand logos floating beside the subject, gritty dark textured wall behind, massive bold uppercase headline overlaid directly on the lower half of the photo (NO separate black panel), word-level {{highlightHex}} highlights, small {{highlightHex}} sub-tagline beneath the headline.
+LAYOUT (@getintoai DNA — absorbed from 560-post dataset, May 2026):
+- 4:5 portrait canvas. Photoreal full-bleed photo in TOP 60-65% of canvas.
+- Solid pure BLACK panel covering BOTTOM 35-40% (hard horizontal cut, no gradient blur into the photo).
+- Centered Anton-style condensed bold ALL-CAPS headline filling the black panel, 4-5 lines.
+- Small white "SWIPE FOR MORE ▶" chip at the very bottom, centered.
 
-CANVAS: 4:5 portrait. Full-bleed PHOTO, no black panels, no borders.
-
-PHOTO LAYER:
-- Subject: USE THE REFERENCE IMAGE labeled SUBJECT_PHOTO as the ground truth for the subject's face. Preserve identity, skin tone, facial features, expression. Match the SAME PERSON from the reference; do NOT generate a generic stand-in. Re-light to cinematic editorial: soft key light from upper-left, gentle rim light, subtle vignette. Skin shows real texture and pores. Photoreal, NOT illustrated, NOT stylized, NOT 3D-rendered.
-- If no SUBJECT_PHOTO reference is provided, generate a photoreal portrait matching this brief: {{subjectPhotoQuery}}.
+PHOTO LAYER (top 60-65%):
+- Subject: USE THE REFERENCE IMAGE labeled SUBJECT_PHOTO as ground truth. Preserve identity, skin tone, expression. Same person. Re-light cinematic editorial: soft key from upper-left, gentle rim, subtle vignette. Real skin texture (pores, micro-stubble). Documentary photojournalism realism. NOT illustrated, NOT 3D-rendered.
+- If no SUBJECT_PHOTO is provided, generate a photoreal portrait matching: {{subjectPhotoQuery}}
+- Background scene tied to the story: "{{backgroundScene}}". Shallow depth-of-field, subject sharp, scene softly blurred. Lighting on subject matches the scene's lighting direction.
+- OPTIONAL circular inset (top-right corner of photo, ~22% width): a smaller related image showing the OTHER side of the story — e.g. a logo bitmap, a related product, a robot, a relevant icon. Use the LOGO_* reference bitmap VERBATIM inside a perfect circle with subtle white outer ring. NO duplicate logos. If 0 logos provided, skip the inset entirely.
 - Frame chest-up to mid-torso, subject looking confidently at camera.
-- BACKGROUND (this is critical for relevance): re-place the subject INTO this specific scene tied to the story: "{{backgroundScene}}". The background must visually telegraph the news. Use shallow depth-of-field so the subject stays sharp and the scene is softly blurred. Lighting on the subject must match the scene's lighting direction (warm tungsten for a studio, cold blue for a server room, golden-hour for an outdoor terrace, etc.).
-- Floating beside the subject: render EXACTLY the number of LOGO_* reference images that were provided as inputs. NO MORE, NO LESS. Do NOT duplicate any logo. Do NOT invent extra logos for symmetry. Do NOT add a logo that was not provided as a reference. Use each provided LOGO bitmap VERBATIM (do not redraw, do not recolor, do not stylize). If 0 logos were provided, omit the floating-logos element entirely. If 1 logo was provided, place it on the right side of the subject, sized large but not covering the face. If 2 logos were provided, place one on the left and one on the right. If 3 logos were provided, place 2 on the left and 1 on the right (or 1+2). Logos sit AT or BEHIND the subject's shoulder line with a slight drop shadow, never in front of the face. Concept hint (do NOT use this to invent additional logos): {{overlayConcept}}.
 
-HEADLINE BLOCK (lower 45% of canvas, overlaid directly on the photo with no panel: text must stay legible via natural photo darkness, NOT via a solid black box):
-- Render this exact headline, ALL CAPS, in heavy bold condensed sans-serif (Druk Wide / Anton style), white, broken naturally across 4-6 lines, centered, tight line-height:
+BLACK PANEL (bottom 35-40%):
+- Solid #000000 panel. Hard top edge (no gradient seam into photo above).
+- HEADLINE: render this exact text VERBATIM, ALL CAPS, heavy bold condensed sans-serif (Druk Wide / Tungsten / Anton style), tight kerning, 4-5 lines, centered:
   "{{headline}}"
-- WITHIN that headline, render the words {{highlightedWords}} in solid {{highlightHex}} (every other word stays white). The highlight color is opaque, not faded. Do not paraphrase or skip any word.
+- WORD-ALTERNATION rule: alternate WHITE and the ACCENT COLOR (defined in preamble) every 1-2 words to create rhythm. Key load-bearing nouns and phrases like {{highlightedWords}} should be in the ACCENT COLOR. The accent is opaque, vivid, never faded. Do not paraphrase, do not skip any word. NEVER render the hex code as visible text — apply it only as a color.
+- Vertical fit: scale font so all 4-5 lines fit comfortably in the panel with consistent line-height (~0.95 of font size).
 
-SUB-TAGLINE (centered, directly below the headline, much smaller, condensed bold ALL-CAPS in {{highlightHex}}, ~16% of headline size):
+SUB-TAGLINE (one short line directly below the headline, centered, smaller, white sans-serif, ~24pt, sentence case):
 {{subTag}}
 
-SWIPE INDICATOR (centered, near the very bottom edge, small white monospace, weight 700, ~20pt):
-SWIPE FOR MORE  →
+SWIPE INDICATOR (centered at the very bottom edge, ~40px above edge, small white monospace 18-20pt):
+SWIPE FOR MORE ▶
 
-NEGATIVE (the ONLY text allowed in the entire image is the headline + sub-tagline, exactly as specified. ALL other text is forbidden):
-- NO wordmark text. NEVER spell out a company name as text (e.g. NEVER render "ANTHROPIC", "OPENAI", "META", "GOOGLE" as standalone letters). The ONLY brand presence allowed is the LOGO_* reference image bitmap composited verbatim. If no logo reference exists for an entity, do NOT render its name as text.
-- NO made-up letters, NO partial wordmarks, NO weird letter substitutions like "ANTHROP\\C" or "OPEN A1".
-- NO fake metadata text along any edge of the image: no "Media", no "Mar 09 2024", no "13:30 PST", no fake author bylines, no fake city names, no fake camera EXIF strings, no fake captions, no fake timestamps. The top, bottom, left, and right edges must be CLEAN of any small text other than what is explicitly specified.
-- NO ticker, NO scrolling chyron, NO mini headlines along the top edge.
-- NO brand handle, NO @username text, NO social handle anywhere on the canvas.
-- NO Instagram UI, no like/comment/share icons, no fake usernames, no random magazine cover lines, no barcode, no date stamp, no swipe arrow, no extra body copy, no decorative quotes, no flat solid black panel under the headline.
-- NO generic concrete-wall backgrounds (the same background every cover ruins the brand). Use the BACKGROUND scene specified above.
-- Subject must NOT be cartoon, anime, illustrated, or 3D-rendered: must be a real photographic portrait of the SAME person from the SUBJECT_PHOTO reference.
+NEGATIVE — the ONLY text allowed in the image is the headline + sub-tagline + "SWIPE FOR MORE ▶". Everything else forbidden:
+- NO brand wordmark, NO "GETINTOAI", NO "@username", NO Instagram handle, NO watermark
+- NO kicker / hairlines / "—— BRAND ——" decorations
+- NO ticker, NO chyron, NO mini-headlines along edges
+- NO fake metadata text (dates, locations, EXIF, bylines)
+- NO Instagram UI (no like/comment/share icons, no nav arrows, no dots)
+- NO em dash (—) or en dash (–). Period, comma, colon, hyphen (-) only.
+- NO duplicated logos, NO invented logos beyond the LOGO_* references provided
+- NO generic concrete-wall backgrounds — use the specified BACKGROUND scene
+- Subject must NOT be cartoon, anime, illustrated, 3D-rendered, or AI-glossy. Must read as a real DSLR photograph.

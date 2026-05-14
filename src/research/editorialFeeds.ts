@@ -109,7 +109,7 @@ function decodeXml(s: string): string {
  *  sorts by pubDate desc, dedupes by URL. Returns top N. */
 export async function fetchEditorialCandidates(opts: { limit?: number; maxAgeHours?: number } = {}): Promise<EditorialItem[]> {
   const limit = opts.limit ?? 30;
-  const maxAgeMs = (opts.maxAgeHours ?? 72) * 3600_000;
+  const maxAgeMs = (opts.maxAgeHours ?? 24) * 3600_000;
   const cutoff = Date.now() - maxAgeMs;
 
   const t0 = Date.now();
@@ -124,7 +124,7 @@ export async function fetchEditorialCandidates(opts: { limit?: number; maxAgeHou
     dedup.push(it);
     if (dedup.length >= limit) break;
   }
-  log.ok("editorial", `${batches.flat().length} items across ${EDITORIAL_FEEDS.length} feeds, ${dedup.length} fresh in last ${opts.maxAgeHours ?? 72}h (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  log.ok("editorial", `${batches.flat().length} items across ${EDITORIAL_FEEDS.length} feeds, ${dedup.length} fresh in last ${opts.maxAgeHours ?? 24}h (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   return dedup;
 }
 
@@ -136,5 +136,5 @@ export function formatCandidatesBlock(items: EditorialItem[]): string {
     const desc = i.description ? ` — ${i.description.slice(0, 140)}` : "";
     return `- [${i.source}, ${hours}h ago] ${i.title}${desc}\n  ${i.url}`;
   });
-  return `\n\nPRE-FETCHED EDITORIAL CANDIDATES (last 72h, broad cross-sector sources):\nThese are real, recent stories from RSS — world news, politics, business, tech, science, culture, sports, AI. Prefer picking from THIS list to anchor the carousel in real current events. DIVERSIFY TOPICS across batches — do NOT pick 3 AI stories in a row when politics/business/culture/world stories are available.\n\n${lines.join("\n")}\n`;
+  return `\n\nPRE-FETCHED EDITORIAL CANDIDATES (last 24h ONLY — these are the freshest stories from RSS, no older items):\nReal, recent stories from world news, politics, business, tech, science, culture, sports, AI. PICK ONLY FROM THIS LIST when possible. Stories older than 24h MUST be rejected. DIVERSIFY TOPICS across batches — do NOT pick 3 AI stories in a row when politics/business/culture/world stories are available.\n\n${lines.join("\n")}\n`;
 }

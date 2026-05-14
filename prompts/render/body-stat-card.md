@@ -7,7 +7,7 @@ LAYOUT: stat-card slide, 4:5 portrait. Matches @getintoai DNA — split composit
 TOP REGION (black panel, generous padding)
 - Massive condensed sans-serif stat (Druk Wide / Anton style), ~180-240pt, centered:
   "{{stat}}"
-- If the stat contains a number + unit ("10M USERS", "$50B"), color the NUMBER portion in {{highlightHex}}, keep the unit white. Otherwise color the most surprising word in {{highlightHex}}.
+- If the stat contains a number + unit ("10M USERS", "$50B"), color the NUMBER portion in the ACCENT COLOR (defined in preamble), keep the unit white. Otherwise color the most surprising word in the ACCENT COLOR.
 - Caption below the stat (mixed-case white sans-serif at ~24-30pt, max 2 lines, centered):
   "{{caption}}"
 
@@ -17,6 +17,7 @@ BOTTOM REGION (full-bleed contextual photo)
 - Soft darkening at top edge so it blends into the panel.
 
 CORNER:
-- Bottom-right: small monospace, {{highlightHex}}: {{slideNumber}} / -
+CORNER METADATA: bottom-right corner. Render the EXACT text below in small monospace 16pt, colored in the ACCENT COLOR. NEVER render the hex code as visible text:
+{{slideNumber}} / -
 
 NEGATIVE: NO Instagram UI, NO brand handle, NO @username, NO wordmark, NO swipe arrow, NO em dashes (period/comma/colon/hyphen only). NO captions burned into the photo.

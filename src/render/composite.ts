@@ -205,32 +205,6 @@ function drawVideoHookPanel(ctx: SKRSContext2D, hook: HookSlide, photoH: number,
 }
 
 // Map spec topic_category → display label. Broadened May 2026 — broad-sector news,
-// not AI-only. Label reflects beat: POLITICS / BUSINESS / WORLD / TECH / SCIENCE /
-// CULTURE / SPORTS / AI / VIRAL.
-const CATEGORY_LABELS: Record<string, string> = {
-  controversy: "BREAKING",
-  business: "BUSINESS",
-  model_release: "TECHNOLOGY",
-  tool: "TECHNOLOGY",
-  research: "SCIENCE",
-};
-
-export function nicheLabelForCategory(category?: string): string {
-  if (category && CATEGORY_LABELS[category]) return CATEGORY_LABELS[category]!;
-  return (process.env.NICHE ?? "NEWS").toUpperCase().replace(/\/.*/, "").trim() || "NEWS";
-}
-
-function drawNicheBadge(ctx: SKRSContext2D, category?: string): void {
-  const label = nicheLabelForCategory(category);
-  ctx.save();
-  ctx.font = `700 28px ${FONT_SANS}`;
-  ctx.fillStyle = WHITE;
-  ctx.textAlign = "right";
-  ctx.textBaseline = "top";
-  ctx.fillText(label, W - PAD, 32);
-  ctx.restore();
-}
-
 function drawSwipeChip(ctx: SKRSContext2D): void {
   // Bottom-right rounded pill "SWIPE →" matching universal DNA.
   const text = "SWIPE  →";
@@ -238,7 +212,6 @@ function drawSwipeChip(ctx: SKRSContext2D): void {
   ctx.font = `800 20px ${FONT_SANS}`;
   const metrics = ctx.measureText(text);
   const padX = 18;
-  const padY = 10;
   const w = metrics.width + padX * 2;
   const h = 36;
   const x = W - PAD - w;
@@ -986,68 +959,12 @@ function drawListCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   }
 }
 
-async function drawAttachedImage(
-  ctx: SKRSContext2D,
-  imageBuf: Buffer,
-  x: number,
-  y: number,
-  maxW: number,
-  maxH: number
-): Promise<void> {
-  const normalized = await sharp(imageBuf)
-    .resize(Math.round(maxW * 1.5), Math.round(maxH * 1.5), { fit: "cover", position: "centre" })
-    .png()
-    .toBuffer();
-  const img: Image = await loadImage(normalized);
-  const ratio = Math.min(maxW / img.width, maxH / img.height);
-  const drawW = img.width * ratio;
-  const drawH = img.height * ratio;
-  const dx = x + (maxW - drawW) / 2;
-  const dy = y + (maxH - drawH) / 2;
-
-  // Drop shadow
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.6)";
-  ctx.shadowBlur = 40;
-  ctx.shadowOffsetY = 18;
-  roundedRect(ctx, dx, dy, drawW, drawH, 28);
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fill();
-  ctx.restore();
-
-  // Clip + draw
-  ctx.save();
-  roundedRect(ctx, dx, dy, drawW, drawH, 28);
-  ctx.clip();
-  ctx.drawImage(img, dx, dy, drawW, drawH);
-  ctx.restore();
-}
-
 function drawCorners(ctx: SKRSContext2D, opts: CompositeOptions): void {
   ctx.font = `600 22px ${FONT_MONO}`;
   ctx.textBaseline = "alphabetic";
-
   ctx.fillStyle = PURPLE();
   ctx.textAlign = "right";
   ctx.fillText(`${String(opts.slide.slide_number).padStart(2, "0")} / ${String(opts.total).padStart(2, "0")}`, W - PAD, H - 48);
-}
-
-function drawPill(ctx: SKRSContext2D, label: string, x: number, y: number, w: number, h: number): void {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.4)";
-  ctx.lineWidth = 1.5;
-  roundedRect(ctx, x, y, w, h, h / 2);
-  ctx.stroke();
-  ctx.fillStyle = PURPLE();
-  ctx.beginPath();
-  ctx.arc(x + 16, y + h / 2, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = WHITE;
-  ctx.font = `500 16px ${FONT_SANS}`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, x + 32, y + h / 2);
-  ctx.restore();
 }
 
 function roundedRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number): void {

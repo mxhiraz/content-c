@@ -2,13 +2,17 @@
 // Edit those files instead of inline strings here. Loader caches + hot-reloads.
 
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { config } from "../config.js";
 import { log } from "../log.js";
 import { skills } from "../skills/loader.js";
+import { getActiveLlmProvider } from "../llm/textGen.js";
 import { FEEDS, type FeedKind } from "./feeds.js";
 import { fetchEditorialCandidates, formatCandidatesBlock } from "./editorialFeeds.js";
+import { extractJson } from "../util/json.js";
+import { loadDeliveryConfig } from "../delivery/config.js";
 import type { Article } from "../types.js";
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
@@ -36,13 +40,11 @@ export async function researchViaWebSearch(limit: number, feed: FeedKind = "vira
   const today = new Date().toISOString().slice(0, 10);
   const feedCfg = FEEDS[feed];
 
-  // Pre-fetch editorial RSS feeds. Pass real-time items as candidates to Claude.
-  // Killed problem: Claude's web_search relies on Google index, which misses last-24h
-  // breaking stories. RSS = direct from publisher within minutes of publish.
-  const editorialItems = await fetchEditorialCandidates({ limit: 30, maxAgeHours: 72 }).catch(() => []);
+  // Pre-fetch editorial RSS feeds (real-time signal from 24 sources).
+  const editorialItems = await fetchEditorialCandidates({ limit: 30, maxAgeHours: 24 }).catch(() => []);
   const candidatesBlock = formatCandidatesBlock(editorialItems);
 
-  // Both prompts come from prompts/research-{system,user}.md via skills loader.
+  // Prompts via skills loader.
   const SYSTEM = skills.research.system();
   const userMsg = skills.research.user({
     today,
@@ -54,66 +56,15 @@ export async function researchViaWebSearch(limit: number, feed: FeedKind = "vira
     minCandidates: Math.max(limit + 2, 5),
   });
 
-  log.step("research", `streaming feed=${feed} via Claude ${config.models.contentModel} + web_search`);
+  // Branch by provider. Claude = native web_search_20250305 tool, prompt-caching discount.
+  // OpenRouter (DeepSeek V3.1) = openrouter:web_search server tool, ~82% cheaper per token.
+  // Gemini text models don't have a server-side web_search yet — fall back to Claude.
+  const provider = await getActiveLlmProvider();
+  const textBuf = provider === "openrouter"
+    ? await runOpenRouterResearch({ system: SYSTEM, user: userMsg, feed })
+    : await runClaudeResearch({ system: SYSTEM, user: userMsg, feed });
 
-  const stream = anthropic.messages.stream({
-    model: config.models.contentModel,
-    max_tokens: 8192,
-    // Cache the long static SYSTEM block (~3.5k tokens). 90% discount on cached reads
-    // when same system reused within 5 min (e.g. multiple feeds fired in quick succession).
-    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
-    messages: [{ role: "user", content: userMsg }],
-  });
-
-  let textBuf = "";
-  let inText = false;
-  let searchCount = 0;
-  let resultCount = 0;
-
-  stream.on("streamEvent", (event) => {
-    if (event.type === "content_block_start") {
-      const block = event.content_block;
-      if (block.type === "server_tool_use" && block.name === "web_search") {
-        searchCount += 1;
-        log.tool("research", `web_search #${searchCount} starting…`);
-      } else if (block.type === "web_search_tool_result") {
-        resultCount += 1;
-        const rc = (block.content as unknown[] | undefined)?.length ?? 0;
-        log.tool("research", `web_search result #${resultCount}: ${rc} hits`);
-      } else if (block.type === "text") {
-        if (!inText) {
-          inText = true;
-          log.info("research", "model writing JSON…");
-        }
-      }
-    } else if (event.type === "content_block_stop") {
-      if (inText) {
-        inText = false;
-      }
-    }
-  });
-
-  stream.on("inputJson", (delta, snapshot) => {
-    const query = (snapshot as { query?: string } | null)?.query;
-    if (typeof query === "string" && query.length > 0) {
-      process.stdout.write(`\r${log.dim(`        query: "${query.slice(0, 80)}"`)}`);
-    }
-  });
-
-  stream.on("text", (delta) => {
-    textBuf += delta;
-    process.stdout.write(log.dim(delta));
-  });
-
-  const final = await stream.finalMessage();
-  log.newline();
-  const u = final.usage as typeof final.usage & { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
-  const cacheW = u.cache_creation_input_tokens ?? 0;
-  const cacheR = u.cache_read_input_tokens ?? 0;
-  log.ok("research", `stop_reason=${final.stop_reason} searches=${searchCount} input=${final.usage.input_tokens} output=${final.usage.output_tokens} cache_w=${cacheW} cache_r=${cacheR}`);
-
-  const json = extractJson(textBuf);
+  const json = extractJson(textBuf, "research");
   const parsed = ListSchema.safeParse(json);
   if (!parsed.success) {
     throw new Error(`web-search research returned invalid JSON: ${parsed.error.toString()}\nraw: ${textBuf.slice(0, 600)}`);
@@ -137,7 +88,7 @@ export async function researchViaWebSearch(limit: number, feed: FeedKind = "vira
   }));
 
   // Drop banned domains AND stories older than MAX_STORY_AGE_HOURS (default 72h)
-  const maxAgeHours = Number.parseInt(process.env.MAX_STORY_AGE_HOURS ?? "72", 10);
+  const maxAgeHours = Number.parseInt(process.env.MAX_STORY_AGE_HOURS ?? "24", 10);
   const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
   const now = Date.now();
   const filtered = parsed.data.stories.filter((s) => {
@@ -205,28 +156,99 @@ function parseDate(hint?: string): Date | null {
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
-function extractJson(text: string): unknown {
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  return tryParse(cleaned, "web-search");
+/** Claude path — Anthropic SDK with native web_search_20250305 server tool. */
+async function runClaudeResearch(opts: { system: string; user: string; feed: FeedKind }): Promise<string> {
+  log.step("research", `streaming feed=${opts.feed} via Claude ${config.models.contentModel} + web_search`);
+  const stream = anthropic.messages.stream({
+    model: config.models.contentModel,
+    max_tokens: 8192,
+    system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+    messages: [{ role: "user", content: opts.user }],
+  });
+
+  let textBuf = "";
+  let searchCount = 0;
+  let resultCount = 0;
+
+  stream.on("streamEvent", (event) => {
+    if (event.type === "content_block_start") {
+      const block = event.content_block;
+      if (block.type === "server_tool_use" && block.name === "web_search") {
+        searchCount += 1;
+        log.tool("research", `web_search #${searchCount} starting…`);
+      } else if (block.type === "web_search_tool_result") {
+        resultCount += 1;
+        const rc = (block.content as unknown[] | undefined)?.length ?? 0;
+        log.tool("research", `web_search result #${resultCount}: ${rc} hits`);
+      }
+    }
+  });
+
+  stream.on("inputJson", (_delta, snapshot) => {
+    const query = (snapshot as { query?: string } | null)?.query;
+    if (typeof query === "string" && query.length > 0) {
+      process.stdout.write(`\r${log.dim(`        query: "${query.slice(0, 80)}"`)}`);
+    }
+  });
+
+  stream.on("text", (delta) => {
+    textBuf += delta;
+    process.stdout.write(log.dim(delta));
+  });
+
+  const final = await stream.finalMessage();
+  log.newline();
+  const u = final.usage as typeof final.usage & { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+  log.ok("research", `claude stop=${final.stop_reason} searches=${searchCount} in=${final.usage.input_tokens} out=${final.usage.output_tokens} cache_w=${u.cache_creation_input_tokens ?? 0} cache_r=${u.cache_read_input_tokens ?? 0}`);
+  return textBuf;
 }
 
-function tryParse(cleaned: string, label: string): unknown {
-  // 1. Direct JSON.parse
-  try { return JSON.parse(cleaned); } catch { /* fall through */ }
-  // 2. Slice between first { and last }
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start !== -1 && end !== -1) {
-    const sliced = cleaned.slice(start, end + 1);
-    try { return JSON.parse(sliced); } catch { /* fall through */ }
-    // 3. jsonrepair (handles trailing commas, unescaped chars, smart quotes, etc.)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { jsonrepair } = require("jsonrepair") as { jsonrepair: (s: string) => string };
-      return JSON.parse(jsonrepair(sliced));
-    } catch (e) {
-      throw new Error(`${label} JSON parse failed (even after repair): ${(e as Error).message}\nfirst 300: ${cleaned.slice(0, 300)}`);
+/** OpenRouter path — DeepSeek V3.1 + openrouter:web_search server tool.
+ *  OpenRouter runs the search server-side, model gets grounded results inline. */
+async function runOpenRouterResearch(opts: { system: string; user: string; feed: FeedKind }): Promise<string> {
+  const cfg = await loadDeliveryConfig().catch(() => null);
+  const apiKey = cfg?.openrouterApiKey || config.openrouterApiKey;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY required for openrouter research path");
+  const model = cfg?.openrouterModel || config.openrouterModel;
+  const client = new OpenAI({
+    apiKey,
+    baseURL: config.openrouterBaseUrl,
+    defaultHeaders: { "HTTP-Referer": "https://github.com/ai-carousel-factory", "X-Title": "AI Carousel Factory" },
+  });
+
+  log.step("research", `streaming feed=${opts.feed} via OpenRouter ${model} + openrouter:web_search`);
+  const t0 = Date.now();
+  const stream = await client.chat.completions.create({
+    model,
+    max_tokens: 8192,
+    stream: true,
+    stream_options: { include_usage: true },
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+    // OpenRouter server tool — searches the web inline, grounds the response.
+    // $0.02/request via Exa (5 results max). Costs added to OpenRouter credits.
+    tools: [{ type: "function", function: { name: "openrouter:web_search" } }] as unknown as OpenAI.Chat.Completions.ChatCompletionTool[],
+  });
+
+  let textBuf = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content ?? "";
+    if (delta) {
+      textBuf += delta;
+      process.stdout.write(log.dim(delta));
+    }
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens ?? 0;
+      outputTokens = chunk.usage.completion_tokens ?? 0;
     }
   }
-  throw new Error(`${label}: no JSON object in output: ${cleaned.slice(0, 300)}`);
+  log.newline();
+  log.ok("research", `openrouter returned in ${((Date.now() - t0) / 1000).toFixed(1)}s, in=${inputTokens} out=${outputTokens}`);
+  return textBuf;
 }
+

@@ -36,11 +36,6 @@ export async function dispatchCarousel(input: DispatchInput): Promise<{ zipPath:
   const sent = { whatsapp: false, email: false };
 
   const subject = input.hookHeadline.length > 80 ? input.hookHeadline.slice(0, 77) + "..." : input.hookHeadline;
-  const body =
-    `Carousel: ${input.hookHeadline}\n` +
-    (input.feed ? `Feed: ${input.feed}\n` : "") +
-    (input.sourceUrl ? `Source: ${input.sourceUrl}\n` : "") +
-    `\n${input.caption}\n\nZIP attached. Output dir: ${path.basename(input.carouselDir)}`;
 
   if (cfg.enableWhatsApp && (cfg.whatsappGroupId || cfg.whatsappGroupName)) {
     try {

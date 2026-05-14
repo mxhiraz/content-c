@@ -74,8 +74,3 @@ export async function fetchArxivFigureImage(url: string): Promise<ExtractedAsset
   }
 }
 
-// Detect "author headshot" image candidates by url/class hints
-export function looksLikeAuthorHeadshot(url: string, htmlContext = ""): boolean {
-  const lower = `${url} ${htmlContext}`.toLowerCase();
-  return /\b(avatar|headshot|byline|author|writer|profile_pic|profile-pic|author-image|gravatar)\b/.test(lower);
-}

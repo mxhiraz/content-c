@@ -84,7 +84,7 @@ SELECTION CRITERIA (in order)
 
 2. CROSS-VALIDATED — story shows up in 2+ Tier-1/Tier-2 sources in 24h. Single-source = -30% penalty.
 3. Primary-source provenance (Tier 1 > Tier 2)
-4. RECENCY: prefer last 24h, hard cap 72h. Older = rejected. Always include published_hint.
+4. RECENCY (HARD RULE): ONLY stories from the LAST 24 HOURS. Anything older than 24h MUST be rejected. NEVER pick a story that's 2+ days old. If you can't find enough fresh 24h stories, return fewer candidates rather than backfill with stale stuff. ALWAYS include the published_hint field with a real ISO date or "today" / "X hours ago" — without it, the date filter can't verify and the story slips through. Stories with no published_hint = auto-reject.
 5. Visual carousel-ability: clear protagonist (person, company, product, scene)
 
 AVOID (auto-disqualify):

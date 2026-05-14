@@ -1,4 +1,6 @@
-Aesthetic: viral global-news Instagram carousel in the @getintoai DNA — broad-spectrum coverage (politics, business, world, tech, AI, science, culture, sports). Photoreal editorial photography. Single accent color {{highlightHex}} used ONLY for word-level highlights inside the headline + small sub-taglines. Render the accent color EXACTLY as the hex specified (do NOT default to purple, magenta, or any other color regardless of training bias). Solid pure black panels for explainer/stat/quote variants.
+Aesthetic: viral global-news Instagram carousel in the @getintoai DNA — broad-spectrum coverage (politics, business, world, tech, AI, science, culture, sports). Photoreal editorial photography.
+
+The ACCENT COLOR for this carousel is exactly {{highlightHex}}. Use this color ONLY for word-level highlights inside headlines, the corner slide number, and small sub-taglines. The hex value is for YOUR rendering reference — NEVER render the hex code "{{highlightHex}}" as visible text in the image. Apply it as a color only. Do NOT default to purple, magenta, or any other color regardless of training bias. Solid pure black panels for explainer/stat/quote variants.
 
 Typography: heavy bold condensed sans-serif (Druk Wide, Tungsten, Anton, Akzidenz Grotesk Black) for headlines. Clean medium-weight humanist sans-serif (Inter, Söhne, Helvetica Now) for body paragraphs. Tight tracking. ALL-CAPS only for the headline. Mixed-case for body prose.
 

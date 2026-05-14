@@ -2,6 +2,9 @@ export const config = {
   anthropicApiKey: required("ANTHROPIC_API_KEY"),
   falKey: process.env.FAL_KEY ?? "",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
+  openrouterBaseUrl: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+  openrouterModel: process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-chat-v3.1",
   brand: {
     handle: process.env.BRAND_HANDLE ?? "@unfoldedai",
     highlightColor: process.env.BRAND_HIGHLIGHT_COLOR ?? "#A855F7",

@@ -20,11 +20,15 @@ export interface DeliveryConfig {
   /** Image model id. "gemini-3-pro-image-preview" (Pro, slower, higher quality)
    *  or "gemini-3.1-flash-image-preview" (Flash, faster, cheaper). Empty = env default. */
   geminiImageModel?: string;
-  /** LLM provider for slide-spec generation. "claude" (default) or "gemini".
-   *  Research + playbook always use Claude (web_search_20250305 tool). */
-  llmProvider?: "claude" | "gemini";
+  /** LLM provider for research + slide-spec gen. "claude" | "gemini" | "openrouter".
+   *  OpenRouter recommended for cost (DeepSeek V3.1 ~82% cheaper than Claude). */
+  llmProvider?: "claude" | "gemini" | "openrouter";
   /** Gemini text model when llmProvider=gemini. e.g. "gemini-3-pro", "gemini-2.5-pro". */
   geminiTextModel?: string;
+  /** OpenRouter key override. Empty = use env. */
+  openrouterApiKey?: string;
+  /** OpenRouter model id, e.g. "deepseek/deepseek-chat-v3.1" or "deepseek/deepseek-r1". */
+  openrouterModel?: string;
 }
 
 const DEFAULT: DeliveryConfig = {

@@ -8,7 +8,7 @@ TOP REGION (black panel, generous left padding)
 - Title (top, left-aligned, heavy condensed sans-serif, white, ALL CAPS, ~42-50pt, 2 lines max):
   "{{title}}"
 - Numbered list (left-aligned, generous line-height, each item on its own line, mixed-case):
-  - Number prefix ("01.", "02.") in {{highlightHex}}
+  - Number prefix ("01.", "02.") in the ACCENT COLOR (defined in preamble)
   - Item text in white sans-serif mixed-case regular weight, ~22-28pt
   - 3-6 items total. Render verbatim:
 {{itemLines}}
@@ -19,6 +19,7 @@ BOTTOM REGION (full-bleed contextual visual)
 - Soft top-edge darkening to blend with the panel.
 
 CORNER:
-- Bottom-right: small monospace, {{highlightHex}}: {{slideNumber}} / -
+CORNER METADATA: bottom-right corner. Render the EXACT text below in small monospace 16pt, colored in the ACCENT COLOR. NEVER render the hex code as visible text:
+{{slideNumber}} / -
 
 NEGATIVE: NO Instagram UI, NO brand handle, NO @username, NO wordmark, NO bullets (numbers only), NO em dashes (period/comma/colon/hyphen only). NO captions burned into the bottom image.

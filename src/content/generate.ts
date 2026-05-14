@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { jsonrepair } from "jsonrepair";
 import { config } from "../config.js";
+import { extractJson } from "../util/json.js";
 import { log } from "../log.js";
 import { generateText } from "../llm/textGen.js";
 import { SlideSpecSchema, type SlideSpec } from "../types.js";
@@ -48,7 +48,7 @@ export async function generateSlideSpec(article: Article, feed?: string): Promis
   const cacheTag = result.cacheCreate || result.cacheRead ? ` cache_w=${result.cacheCreate} cache_r=${result.cacheRead}` : "";
   log.ok("content", `provider=${result.provider} model=${result.model} stop_reason=${result.stopReason} input=${result.inputTokens} output=${result.outputTokens}${cacheTag}`);
 
-  const json = extractJson(result.text);
+  const json = extractJson(result.text, "slide-spec");
 
   if (typeof json === "object" && json !== null && "error" in json && (json as Record<string, unknown>).error === "insufficient_source_material") {
     throw new InsufficientSourceError();
@@ -88,23 +88,6 @@ export async function generateSlideSpec(article: Article, feed?: string): Promis
   return parsed.data;
 }
 
-function extractJson(text: string): unknown {
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  // 1. Direct
-  try { return JSON.parse(cleaned); } catch { /* fall through */ }
-  // 2. Slice between first { and last }
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error(`No JSON in model output: ${text.slice(0, 200)}`);
-  const sliced = cleaned.slice(start, end + 1);
-  try { return JSON.parse(sliced); } catch { /* fall through */ }
-  // 3. jsonrepair fallback (trailing commas, unescaped quotes/newlines, smart quotes, etc.)
-  try {
-    return JSON.parse(jsonrepair(sliced));
-  } catch (e) {
-    throw new Error(`SlideSpec JSON parse failed (even after repair): ${(e as Error).message}\nfirst 300: ${cleaned.slice(0, 300)}`);
-  }
-}
 
 function scrubNulls(obj: unknown): void {
   if (Array.isArray(obj)) {

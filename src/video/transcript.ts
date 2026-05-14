@@ -16,7 +16,7 @@ export async function loadVtt(vttPath: string): Promise<TranscriptCue[]> {
   }
 }
 
-export function parseVtt(vtt: string): TranscriptCue[] {
+function parseVtt(vtt: string): TranscriptCue[] {
   const cues: TranscriptCue[] = [];
   const lines = vtt.split(/\r?\n/);
   for (let i = 0; i < lines.length; i += 1) {

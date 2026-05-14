@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
-import sharp from "sharp";
 import { config } from "../config.js";
 import { log } from "../log.js";
 import type { SlideSpec } from "../types.js";
