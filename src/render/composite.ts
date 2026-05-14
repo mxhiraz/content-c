@@ -4,6 +4,8 @@ import { writeFile } from "node:fs/promises";
 import { config } from "../config.js";
 import type { BodySlide, HookSlide } from "../types.js";
 
+// 1080×1350 (4:5 portrait) — IG's official recommended post size.
+// Per client direction 2026-05-13. Cycled through 1350 → 1080 → 1440 → 1350 same day.
 const W = 1080;
 const H = 1350;
 const PAD = 72;
@@ -72,6 +74,7 @@ export interface CompositeOptions {
   total: number;
   attachedImage?: Buffer;
   brandHandle: string;
+  topicCategory?: string;
 }
 
 export interface HookCompositeOptions {
@@ -79,6 +82,7 @@ export interface HookCompositeOptions {
   subjectImage: Buffer;
   logoImages: Buffer[];
   brandHandle: string;
+  topicCategory?: string;
 }
 
 export type HookStyle = "panel" | "overlay" | "magazine";
@@ -93,6 +97,9 @@ export async function compositeHookSlide(opts: HookCompositeOptions, style: Hook
   } else {
     drawMagazineHeadline(layout.ctx, opts.hook);
   }
+  // No branding — no niche badge, no wordmark. Client May 2026: pure content.
+  // SWIPE chip stays (functional UI, not brand).
+  drawSwipeChip(layout.ctx);
   return layout.canvas.toBuffer("image/png");
 }
 
@@ -192,16 +199,69 @@ function drawVideoHookPanel(ctx: SKRSContext2D, hook: HookSlide, photoH: number,
     ctx.fillText(hook.sub_tagline.toUpperCase(), W / 2, H - 86);
   }
 
-  // Swipe indicator, larger + brighter than before.
-  ctx.font = `700 26px ${FONT_MONO}`;
-  ctx.fillStyle = WHITE;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText("SWIPE FOR MORE  →", W / 2, H - 44);
+  // Swipe indicator: chip is drawn separately by compositeHookSlide → drawSwipeChip.
+  // No duplicate centered text — would collide with the bottom-right pill.
   ctx.textAlign = "left";
 }
 
-export function compositeBodyTextOverlay(slide: BodySlide, total: number): Buffer {
+// Map spec topic_category → display label. Broadened May 2026 — broad-sector news,
+// not AI-only. Label reflects beat: POLITICS / BUSINESS / WORLD / TECH / SCIENCE /
+// CULTURE / SPORTS / AI / VIRAL.
+const CATEGORY_LABELS: Record<string, string> = {
+  controversy: "BREAKING",
+  business: "BUSINESS",
+  model_release: "TECHNOLOGY",
+  tool: "TECHNOLOGY",
+  research: "SCIENCE",
+};
+
+export function nicheLabelForCategory(category?: string): string {
+  if (category && CATEGORY_LABELS[category]) return CATEGORY_LABELS[category]!;
+  return (process.env.NICHE ?? "NEWS").toUpperCase().replace(/\/.*/, "").trim() || "NEWS";
+}
+
+function drawNicheBadge(ctx: SKRSContext2D, category?: string): void {
+  const label = nicheLabelForCategory(category);
+  ctx.save();
+  ctx.font = `700 28px ${FONT_SANS}`;
+  ctx.fillStyle = WHITE;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText(label, W - PAD, 32);
+  ctx.restore();
+}
+
+function drawSwipeChip(ctx: SKRSContext2D): void {
+  // Bottom-right rounded pill "SWIPE →" matching universal DNA.
+  const text = "SWIPE  →";
+  ctx.save();
+  ctx.font = `800 20px ${FONT_SANS}`;
+  const metrics = ctx.measureText(text);
+  const padX = 18;
+  const padY = 10;
+  const w = metrics.width + padX * 2;
+  const h = 36;
+  const x = W - PAD - w;
+  const y = H - PAD - h;
+  // Pill background — semitransparent black with subtle border
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  const radius = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = WHITE;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+  ctx.restore();
+}
+
+export function compositeBodyTextOverlay(slide: BodySlide, total: number, topicCategory?: string): Buffer {
   const canvas: Canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
 
@@ -251,6 +311,9 @@ export function compositeBodyTextOverlay(slide: BodySlide, total: number): Buffe
   ctx.textBaseline = "alphabetic";
   ctx.fillText(`${String(slide.slide_number).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, W - PAD, H - 48);
 
+  // No branding — niche badge removed per client May 2026 (pure content).
+  void topicCategory;
+
   return canvas.toBuffer("image/png");
 }
 
@@ -281,12 +344,18 @@ async function renderHookLayout(opts: HookCompositeOptions, style: HookStyle): P
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, photoH, W, H - photoH);
   } else if (style === "overlay") {
-    const grad = ctx.createLinearGradient(0, H * 0.3, 0, H);
+    // Stronger gradient + solid bottom band so headline is always legible
+    // regardless of subject photo busyness (e.g. screenshot backgrounds).
+    const grad = ctx.createLinearGradient(0, H * 0.25, 0, H);
     grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(0.55, "rgba(0,0,0,0.85)");
+    grad.addColorStop(0.45, "rgba(0,0,0,0.75)");
+    grad.addColorStop(0.7, "rgba(0,0,0,0.95)");
     grad.addColorStop(1, "rgba(0,0,0,1)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
+    // Hard solid panel under headline zone (bottom 38%) — guarantees contrast
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, Math.round(H * 0.62), W, H - Math.round(H * 0.62));
   } else if (style === "magazine") {
     const top = ctx.createLinearGradient(0, 0, 0, 80);
     top.addColorStop(0, "rgba(0,0,0,0.85)");
@@ -318,6 +387,7 @@ function drawOverlayHeadline(ctx: SKRSContext2D, hook: HookSlide): void {
   ctx.textBaseline = "top";
   const totalH = lines.length * lineH;
   const startY = H - 240 - totalH;
+  // No kicker / brand text — client direction May 2026 (do not regress)
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (!line) continue;
@@ -331,12 +401,6 @@ function drawOverlayHeadline(ctx: SKRSContext2D, hook: HookSlide): void {
     ctx.textBaseline = "alphabetic";
     ctx.fillText(hook.sub_tagline.toUpperCase(), W / 2, H - 130);
   }
-  // swipe-for-more indicator
-  ctx.font = `700 20px ${FONT_MONO}`;
-  ctx.fillStyle = WHITE;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText("SWIPE FOR MORE  →", W / 2, H - 60);
   ctx.textAlign = "left";
 }
 
@@ -498,7 +562,14 @@ export async function compositeBodySlide(opts: CompositeOptions): Promise<Buffer
   ctx.fillStyle = BLACK;
   ctx.fillRect(0, 0, W, H);
 
-  switch (opts.slide.layout_variant) {
+  // Every variant gets photo top + variant-specific bottom panel when image available
+  // (matches reference IG style — no slide is pure black with text).
+  // text_explainer handles its own photo internally.
+  const variant = opts.slide.layout_variant;
+  if (variant !== "text_explainer" && opts.attachedImage) {
+    await drawPhotoTopHalf(ctx, opts.attachedImage);
+  }
+  switch (variant) {
     case "stat_card":
       drawStatCard(ctx, opts);
       break;
@@ -563,12 +634,19 @@ async function drawTextExplainer(ctx: SKRSContext2D, opts: CompositeOptions): Pr
     return;
   }
 
-  const PHOTO_H = Math.round(H * 0.5);
+  // @getintoai DNA (May 2026): body slides are TEXT TOP + IMAGE BOTTOM.
+  // Inverse of old layout (photo top, panel bottom). Matches reference style:
+  // - Top ~55%: black panel with title + body prose (body in MIXED CASE, not uppercase)
+  // - Bottom ~45%: full-bleed photo OR product screenshot
+  const TEXT_H = Math.round(H * 0.55);
+  const PHOTO_H = H - TEXT_H;
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(0, 0, W, TEXT_H);
 
   if (isProductScreenshot && attachedImage) {
-    // Centered product UI mockup with rounded corners on black
+    // Bottom: centered product UI screenshot on black with rounded corners + shadow
     ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, W, PHOTO_H);
+    ctx.fillRect(0, TEXT_H, W, PHOTO_H);
     const innerW = W - PAD * 2;
     const innerH = PHOTO_H - PAD;
     const buf = await sharp(attachedImage)
@@ -580,62 +658,61 @@ async function drawTextExplainer(ctx: SKRSContext2D, opts: CompositeOptions): Pr
     const dw = img.width * ratio;
     const dh = img.height * ratio;
     const dx = (W - dw) / 2;
-    const dy = (PHOTO_H - dh) / 2;
+    const dy = TEXT_H + (PHOTO_H - dh) / 2;
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur = 50;
-    ctx.shadowOffsetY = 22;
-    roundedRect(ctx, dx, dy, dw, dh, 26);
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 18;
+    roundedRect(ctx, dx, dy, dw, dh, 24);
     ctx.fillStyle = "#1a1a1a";
     ctx.fill();
     ctx.restore();
     ctx.save();
-    roundedRect(ctx, dx, dy, dw, dh, 26);
+    roundedRect(ctx, dx, dy, dw, dh, 24);
     ctx.clip();
     ctx.drawImage(img, dx, dy, dw, dh);
     ctx.restore();
   } else if (attachedImage) {
-    // Full-bleed photo top
+    // Bottom: full-bleed contextual photo (varies per slide).
     const padded = await sharp(attachedImage)
       .resize(W, PHOTO_H, { fit: "cover", position: "centre" })
       .png()
       .toBuffer();
     const img: Image = await loadImage(padded);
-    ctx.drawImage(img, 0, 0, W, PHOTO_H);
-    const bridge = ctx.createLinearGradient(0, PHOTO_H - 100, 0, PHOTO_H + 30);
-    bridge.addColorStop(0, "rgba(0,0,0,0)");
-    bridge.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.drawImage(img, 0, TEXT_H, W, PHOTO_H);
+    // Bridge gradient from black panel into photo for clean transition
+    const bridge = ctx.createLinearGradient(0, TEXT_H - 20, 0, TEXT_H + 80);
+    bridge.addColorStop(0, "rgba(0,0,0,1)");
+    bridge.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = bridge;
-    ctx.fillRect(0, PHOTO_H - 100, W, 130);
+    ctx.fillRect(0, TEXT_H - 20, W, 100);
   }
 
-  ctx.fillStyle = BLACK;
-  ctx.fillRect(0, PHOTO_H, W, H - PHOTO_H);
-
-  const panelTop = PHOTO_H + 40;
+  // ── Top text region ──
+  const panelTop = PAD + 12;
   ctx.textBaseline = "top";
 
-  // Headline auto-fit
-  let titleSize = 52;
+  // Headline (ALL CAPS, condensed bold, Anton)
+  let titleSize = 56;
   let titleLines: string[] = [];
   let titleLineH = 0;
-  for (; titleSize >= 30; titleSize -= 2) {
+  for (; titleSize >= 32; titleSize -= 2) {
     ctx.font = `900 ${titleSize}px ${FONT_SANS}`;
     titleLines = wrapLines(ctx, headline, W - PAD * 2);
     titleLineH = titleSize * 1.05;
-    if (titleLines.length * titleLineH <= 220) break;
+    if (titleLines.length * titleLineH <= 200) break;
   }
   for (let i = 0; i < titleLines.length; i += 1) {
     const line = titleLines[i];
     if (!line) continue;
     drawHighlightedHeadlineLine(ctx, line, highlights, PAD, panelTop + i * titleLineH, titleSize);
   }
-  const titleEnd = panelTop + titleLines.length * titleLineH + 20;
+  const titleEnd = panelTop + titleLines.length * titleLineH + 28;
 
-  // Body paragraph with bold emphasis runs
+  // Body paragraph — MIXED CASE per @getintoai reference (not uppercase)
   ctx.fillStyle = WHITE;
   ctx.textAlign = "left";
-  drawEmphasizedParagraph(ctx, text, emphasis, PAD, titleEnd, W - PAD * 2, 28, 36);
+  drawEmphasizedParagraph(ctx, text, emphasis, PAD, titleEnd, W - PAD * 2, 30, 40);
 }
 
 function drawEmphasizedParagraph(
@@ -747,9 +824,35 @@ function drawHighlightedHeadlineLine(
   }
 }
 
+// Shared: draw full-bleed photo on top 50%, black panel bottom 50%.
+// Variants render their content into the bottom panel by adjusting Y math.
+async function drawPhotoTopHalf(ctx: SKRSContext2D, imageBuf: Buffer): Promise<void> {
+  const PHOTO_H = Math.round(H * 0.5);
+  const padded = await sharp(imageBuf)
+    .resize(W, PHOTO_H, { fit: "cover", position: "centre" })
+    .png()
+    .toBuffer();
+  const img: Image = await loadImage(padded);
+  ctx.drawImage(img, 0, 0, W, PHOTO_H);
+  // Black bottom panel
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(0, PHOTO_H, W, H - PHOTO_H);
+  // Bridge gradient over the seam for cleaner transition
+  const bridge = ctx.createLinearGradient(0, PHOTO_H - 60, 0, PHOTO_H + 20);
+  bridge.addColorStop(0, "rgba(0,0,0,0)");
+  bridge.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.fillStyle = bridge;
+  ctx.fillRect(0, PHOTO_H - 60, W, 80);
+}
+
 function drawStatCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const stat = (opts.slide.stat_value ?? opts.slide.headline).toUpperCase();
   const caption = opts.slide.stat_caption ?? opts.slide.body_text;
+  // If photo on top, fit stat into bottom panel (50%-90%); else center full frame.
+  const hasPhoto = !!opts.attachedImage;
+  const panelTop = hasPhoto ? Math.round(H * 0.5) : 0;
+  const panelH = H - panelTop;
+  const cy = panelTop + panelH * 0.4;
 
   // Detect number portion vs unit
   const m = stat.match(/^([$£€]?[\d.,]+[KMB]?%?)(.*)$/);
@@ -758,9 +861,10 @@ function drawStatCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const fullText = unitPart ? `${numPart} ${unitPart}` : numPart;
 
   const maxW = W - PAD * 2;
-  // Auto-fit: try 360 (Anton condensed packs more), shrink to 80 until full text fits
-  let fontSize = 360;
-  for (; fontSize >= 80; fontSize -= 8) {
+  // Auto-fit: smaller start size when photo eats top half. Shrink until fits.
+  const startSize = hasPhoto ? 180 : 360;
+  let fontSize = startSize;
+  for (; fontSize >= 60; fontSize -= 8) {
     ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
     if (ctx.measureText(fullText).width <= maxW) break;
   }
@@ -768,7 +872,6 @@ function drawStatCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   // If single line still doesn't fit, wrap the stat itself
   ctx.font = `${fontSize}px ${FONT_DISPLAY}`;
   const fits = ctx.measureText(fullText).width <= maxW;
-  const cy = H * 0.42;
   ctx.textBaseline = "middle";
 
   if (fits) {
@@ -798,31 +901,39 @@ function drawStatCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
 
   ctx.textAlign = "center";
   ctx.fillStyle = WHITE;
-  ctx.font = `500 38px ${FONT_SANS}`;
+  ctx.font = `500 ${hasPhoto ? 28 : 38}px ${FONT_SANS}`;
   ctx.textBaseline = "alphabetic";
-  wrapText(ctx, caption, PAD, cy + 220, W - PAD * 2, 48, true, "center");
+  const captionGap = hasPhoto ? Math.min(140, fontSize * 0.7 + 20) : 220;
+  wrapText(ctx, caption, PAD, cy + captionGap, W - PAD * 2, hasPhoto ? 36 : 48, true, "center");
 }
 
 function drawQuotePull(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const q = opts.slide.pull_quote ?? opts.slide.body_text;
   const attr = (opts.slide.quote_attribution ?? "").toUpperCase();
+  const hasPhoto = !!opts.attachedImage;
+  const panelTop = hasPhoto ? Math.round(H * 0.5) : 0;
+  const quoteStartY = hasPhoto ? panelTop + 40 : H * 0.32;
+  const quoteFontSize = hasPhoto ? 40 : 64;
+  const quoteLineH = hasPhoto ? 52 : 80;
 
-  // Giant decorative quote mark
-  ctx.fillStyle = PURPLE();
-  ctx.globalAlpha = 0.25;
-  ctx.font = `900 480px ${FONT_SERIF}`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText("“", PAD - 30, PAD - 60);
-  ctx.globalAlpha = 1;
+  // Giant decorative quote mark (only when no photo — would clash with image)
+  if (!hasPhoto) {
+    ctx.fillStyle = PURPLE();
+    ctx.globalAlpha = 0.25;
+    ctx.font = `900 480px ${FONT_SERIF}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("“", PAD - 30, PAD - 60);
+    ctx.globalAlpha = 1;
+  }
 
   // Quote body
   ctx.fillStyle = WHITE;
-  ctx.font = `600 64px ${FONT_SERIF}`;
+  ctx.font = `600 ${quoteFontSize}px ${FONT_SERIF}`;
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
-  const qLines = wrapText(ctx, `“${q}”`, PAD, H * 0.32, W - PAD * 2, 80);
-  const qEnd = H * 0.32 + qLines * 80;
+  const qLines = wrapText(ctx, `“${q}”`, PAD, quoteStartY, W - PAD * 2, quoteLineH);
+  const qEnd = quoteStartY + qLines * quoteLineH;
 
   if (attr) {
     ctx.fillStyle = DIM;
@@ -847,23 +958,31 @@ function drawQuotePull(ctx: SKRSContext2D, opts: CompositeOptions): void {
 function drawListCard(ctx: SKRSContext2D, opts: CompositeOptions): void {
   const items = opts.slide.list_items ?? [];
   const title = (opts.slide.list_title ?? opts.slide.headline).toUpperCase();
+  const hasPhoto = !!opts.attachedImage;
+  const panelTop = hasPhoto ? Math.round(H * 0.5) : 0;
+  const titleY = hasPhoto ? panelTop + 24 : PAD;
+  const titleSize = hasPhoto ? 48 : 78;
+  const titleLineH = hasPhoto ? 52 : 84;
+  const itemFontSize = hasPhoto ? 26 : 38;
+  const itemLineH = hasPhoto ? 36 : 50;
+  const itemGap = hasPhoto ? 18 : 36;
 
   ctx.fillStyle = PURPLE();
-  ctx.font = `78px ${FONT_DISPLAY}`;
+  ctx.font = `${titleSize}px ${FONT_DISPLAY}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  wrapText(ctx, title, PAD, PAD, W - PAD * 2, 84);
+  const titleLines = wrapText(ctx, title, PAD, titleY, W - PAD * 2, titleLineH);
 
-  let y = PAD + 200;
-  ctx.font = `500 38px ${FONT_SANS}`;
+  let y = titleY + titleLines * titleLineH + 24;
+  ctx.font = `500 ${itemFontSize}px ${FONT_SANS}`;
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i];
     if (!item) continue;
     ctx.fillStyle = PURPLE();
     ctx.fillText(`${String(i + 1).padStart(2, "0")}.`, PAD, y);
     ctx.fillStyle = WHITE;
-    const lines = wrapText(ctx, item, PAD + 100, y, W - PAD * 2 - 100, 50);
-    y += lines * 50 + 36;
+    const lines = wrapText(ctx, item, PAD + (hasPhoto ? 70 : 100), y, W - PAD * 2 - (hasPhoto ? 70 : 100), itemLineH);
+    y += lines * itemLineH + itemGap;
   }
 }
 

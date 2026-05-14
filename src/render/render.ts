@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
+import sharp from "sharp";
 import { config } from "../config.js";
 import { log } from "../log.js";
 import type { SlideSpec } from "../types.js";
@@ -30,7 +31,20 @@ function strEnv(name: string, fallback: string): string {
 const BODY_RENDERER = strEnv("BODY_RENDERER", "gemini") as "gemini" | "composite";
 const HOOK_RENDERER = strEnv("HOOK_RENDERER", "composite") as "gemini" | "composite";
 const HOOK_TYPOGRAPHY = strEnv("HOOK_TYPOGRAPHY", "canvas") as "canvas" | "gemini";
-const HOOK_STYLE = strEnv("HOOK_STYLE", "overlay") as HookStyle;
+// HOOK_STYLE: panel | overlay | magazine | auto
+// "auto" = rotate deterministically per carousel via carousel_id hash. Editor-feel variety
+// across the feed (no two consecutive carousels share the same hook layout).
+const HOOK_STYLE_RAW = strEnv("HOOK_STYLE", "auto");
+const HOOK_STYLES_POOL: HookStyle[] = ["panel", "overlay", "magazine"];
+function pickHookStyle(carouselId: string): HookStyle {
+  if (HOOK_STYLE_RAW !== "auto" && HOOK_STYLES_POOL.includes(HOOK_STYLE_RAW as HookStyle)) {
+    return HOOK_STYLE_RAW as HookStyle;
+  }
+  // Deterministic from id so re-renders are stable but feed has variety
+  let h = 0;
+  for (let i = 0; i < carouselId.length; i += 1) h = ((h << 5) - h + carouselId.charCodeAt(i)) | 0;
+  return HOOK_STYLES_POOL[Math.abs(h) % HOOK_STYLES_POOL.length]!;
+}
 const VIDEO_COVER = boolEnv("VIDEO_COVER", false);
 const VIDEO_BODY = boolEnv("VIDEO_BODY", false);
 const SOURCE_VIDEO = boolEnv("SOURCE_VIDEO", false);
@@ -142,8 +156,11 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
   const logoCount = goodLogos.length;
   log.ok("asset", `hook refs: ${hookRefs.length} (subject=${!!subject}, logos=${logoCount}/${dedupedDomains.length}, scenes=${sceneAssets.length})`);
 
-  const accent = subject ? await extractAccentColor(subject.buffer) : config.brand.highlightColor;
+  // Lock accent to brand color (yellow #FCD400). Auto-extract from photo caused
+  // accent drift (orange/red/whatever the photo's dominant color was). Brand consistency wins.
+  const accent = config.brand.highlightColor;
   setAccent(accent);
+  void extractAccentColor; // kept exported for potential debug use
   log.ok("asset", `accent color = ${accent}`);
 
   type Task = {
@@ -224,33 +241,51 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
       : undefined,
   });
 
+  // Dedup tracker: image hashes already attached to body slides in THIS carousel.
+  // Subject hash pre-seeded so body slides never repeat the hook's photo.
+  const usedHashes = new Set<string>();
+  if (subject) usedHashes.add(hashBuffer(subject.buffer));
+
   const bodyTasks: Task[] = await Promise.all(
     spec.body_slides.map(async (body, idx) => {
       const refs: GeminiReferenceImage[] = [];
       let attached: Buffer | undefined;
+      const tryAttach = (buf: Buffer): boolean => {
+        const h = hashBuffer(buf);
+        if (usedHashes.has(h)) return false;
+        usedHashes.add(h);
+        attached = buf;
+        return true;
+      };
 
       // Prefer source video frame for THIS body slide (varies frame per slide for visual variety)
       const frameForSlide = videoFrames.length > 0 ? videoFrames[(idx + 1) % videoFrames.length] : undefined;
 
       if (body.layout_variant === "text_explainer" && body.product_screenshot_query) {
         const shot = await fetchProductScreenshot(body.product_screenshot_query);
-        if (shot) {
+        if (shot && tryAttach(shot.buffer)) {
           refs.push(toRef(shot, "PRODUCT_SCREENSHOT (place verbatim in centered mockup)"));
-          attached = shot.buffer;
         }
       }
-      if (!attached && frameForSlide) {
-        attached = frameForSlide;
+      if (!attached && frameForSlide && tryAttach(frameForSlide)) {
         refs.push({ buffer: frameForSlide, mimeType: "image/png", label: "SOURCE_VIDEO_FRAME (place full-bleed at top, this is the real news footage)" });
       } else if (!attached && sceneAssets.length > 0) {
-        const sceneAsset = sceneAssets[idx % sceneAssets.length]!;
-        attached = sceneAsset.buffer;
-        refs.push(toRef(sceneAsset, "SOURCE_PAGE_IMAGE (place full-bleed at top, real photo from article)"));
+        // Walk sceneAssets starting at idx, pick the first one NOT already used.
+        for (let k = 0; k < sceneAssets.length; k += 1) {
+          const candidate = sceneAssets[(idx + k) % sceneAssets.length]!;
+          if (tryAttach(candidate.buffer)) {
+            refs.push(toRef(candidate, "SOURCE_PAGE_IMAGE (place full-bleed at top, real photo from article)"));
+            break;
+          }
+        }
       }
-      // Intentional: do NOT fall back to the hook `subject` buffer for body slides.
-      // That single buffer was shared across all bodies, producing 3 identical thumbnails
-      // (e.g. same brand wordmark on every slide). When no varied source exists, body renders
-      // full-bleed black with Anton-centered text via drawTextExplainer's no-image branch.
+      // NO subject-photo fallback for body slides — client May 2026: "using same image
+       // as cover and text, style is bad". When no scene asset / video frame / product
+       // screenshot available, fall through to text-only black variant. Better empty
+       // than a 4-slide carousel where every slide is the same protagonist face.
+      if (!attached) {
+        log.info("asset", `body slide ${body.slide_number}: no varied scene asset — rendering text-only black variant`);
+      }
       return {
         number: body.slide_number,
         kind: "body" as const,
@@ -345,7 +380,7 @@ export async function renderCarousel(spec: SlideSpec): Promise<RenderedCarousel>
             startSec = Math.min(startMax, slotIdx * idealSegLen);
           }
           usedRanges.push({ start: startSec, end: startSec + segLen });
-          const overlay = compositeBodyTextOverlay(body, totalSlides);
+          const overlay = compositeBodyTextOverlay(body, totalSlides, spec.topic_category);
           const mp4Path = path.join(outDir, `${String(body.slide_number).padStart(2, "0")}_body.mp4`);
           log.tool("video", `body ${body.slide_number} window: ${startSec.toFixed(1)}s..${(startSec + segLen).toFixed(1)}s of ${dur.toFixed(1)}s [${chosenBy}]`);
           try {
@@ -404,8 +439,9 @@ async function renderOne(
   const filePath = path.join(outDir, filename);
 
   if (task.kind === "hook" && task.hookComposite) {
+    const hookStyle = pickHookStyle(spec.carousel_id);
     if (HOOK_TYPOGRAPHY === "gemini") {
-      log.tool("render", `${tag} → composite base + Gemini typography polish`);
+      log.tool("render", `${tag} → composite base + Gemini typography polish (style=${hookStyle})`);
       const base = await compositeHookBase(
         {
           hook: spec.hook_slide,
@@ -413,9 +449,9 @@ async function renderOne(
           logoImages: task.hookComposite.logoImages,
           brandHandle: config.brand.handle,
         },
-        HOOK_STYLE
+        hookStyle
       );
-      const polishPrompt = buildPolishPrompt(spec, HOOK_STYLE, accent);
+      const polishPrompt = buildPolishPrompt(spec, hookStyle, accent);
       const out = await geminiGenerateImage({
         prompt: polishPrompt,
         aspectRatio: "4:5",
@@ -424,15 +460,16 @@ async function renderOne(
       });
       await writeFile(filePath, out.buffer);
     } else {
-      log.tool("render", `${tag} → composite ${HOOK_STYLE} (real photo, no AI)`);
+      log.tool("render", `${tag} → composite ${hookStyle} (real photo, no AI)`);
       const buf = await compositeHookSlide(
         {
           hook: spec.hook_slide,
           subjectImage: task.hookComposite.subjectImage,
           logoImages: task.hookComposite.logoImages,
           brandHandle: config.brand.handle,
+          topicCategory: spec.topic_category,
         },
-        HOOK_STYLE
+        hookStyle
       );
       await writeFile(filePath, buf);
     }
@@ -462,6 +499,7 @@ async function renderOne(
       total: totalSlides,
       attachedImage: task.composite!.attachedImage,
       brandHandle: config.brand.handle,
+      topicCategory: spec.topic_category,
     });
     await writeFile(filePath, buf);
     log.ok("render", `${tag} ✓ ${((Date.now() - t0) / 1000).toFixed(1)}s → ${filename}`);

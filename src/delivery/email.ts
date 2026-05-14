@@ -24,20 +24,28 @@ export interface EmailSendOpts {
   to: string;
   subject: string;
   body: string;
+  /** Single attachment path (zip or any file). Use attachmentPaths for multiple files. */
   attachmentPath?: string;
+  /** Multiple attachment paths — sent as individual files. Preferred for carousels
+   *  so the recipient gets each slide as a separate image instead of a zip to unpack. */
+  attachmentPaths?: string[];
 }
 
 export async function sendCarouselEmail(opts: EmailSendOpts): Promise<void> {
   const transport = getTransport();
   const from = process.env.SMTP_FROM ?? process.env.SMTP_USER!;
+  const paths = [
+    ...(opts.attachmentPath ? [opts.attachmentPath] : []),
+    ...(opts.attachmentPaths ?? []),
+  ];
   await transport.sendMail({
     from,
     to: opts.to,
     subject: opts.subject,
     text: opts.body,
-    attachments: opts.attachmentPath
-      ? [{ filename: path.basename(opts.attachmentPath), path: opts.attachmentPath }]
+    attachments: paths.length
+      ? paths.map((p) => ({ filename: path.basename(p), path: p }))
       : undefined,
   });
-  log.ok("email", `sent "${opts.subject}" → ${opts.to}`);
+  log.ok("email", `sent "${opts.subject}" (${paths.length} attachment${paths.length === 1 ? "" : "s"}) → ${opts.to}`);
 }

@@ -1,0 +1,10 @@
+{
+  "news_drop": "NEWS-DROP — S1: one-line headline + dollar/date/number that makes it real. S2: what actually changed in plain English. S3: the one chart, screenshot, or quote that proves it. S4: the second-order consequence (\"watch this next\").",
+  "myth_bust": "MYTH-BUST — S1: the thing everyone is saying, in their words. S2: \"Wrong.\" + the one fact that breaks it. S3: what's actually happening + receipt. S4: what the reader should do differently.",
+  "stat_stack": "STAT-STACK — S1: one number, huge. S2: context number (vs last year / vs competitor). S3: third number that flips the story. S4: one-line take.",
+  "before_after": "BEFORE/AFTER — S1: world on Monday. S2: world on Tuesday after the news. S3: who just got richer. S4: who just got obsolete.",
+  "insider_pov": "INSIDER POV — S1: \"I'm a [role] at [company]. Here's what we don't say publicly.\" S2: one specific build/decision detail. S3: why public framing is wrong. S4: what it means for users.",
+  "question_hook": "QUESTION-HOOK — S1: a sharp specific question (no clickbait). S2: the non-obvious answer. S3: the receipt. S4: what it signals about 2026.",
+  "diagram_flow": "DIAGRAM/FLOW — S1: \"How [thing] actually works\" + arrow-1. S2: step 2 of the system, drawn. S3: step 3 + the failure mode. S4: one sentence: where the value leaks.",
+  "receipts": "RECEIPTS — S1: cropped tweet/email/court doc, one line circled. S2: a second receipt that confirms. S3: translation of what this actually means. S4: what to watch next."
+}

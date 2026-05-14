@@ -76,9 +76,10 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm install --include=dev --no-audit --no-fund
 
-# Copy source
+# Copy source + prompts/ (all editable prompts live there — see SKILL.md + src/skills/loader.ts)
 COPY tsconfig.json ./
 COPY src ./src
+COPY prompts ./prompts
 
 # Persistent state lives in /app/out (mounted as volume)
 RUN mkdir -p /app/out

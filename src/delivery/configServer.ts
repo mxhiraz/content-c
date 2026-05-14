@@ -78,6 +78,13 @@ async function startWaClientAsync(): Promise<void> {
   state.qr = null;
   groupsCache = null;
   const sessionDir = path.join(config.pipeline.outputDir, ".wa-session");
+  // Clean stale Chromium singleton locks from previous container (container hostname
+  // changes each recreate, puppeteer thinks another machine owns the profile).
+  // Locks are tiny symlinks/files — safe to delete.
+  for (const lockName of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    await rm(path.join(sessionDir, "session", lockName), { force: true }).catch(() => undefined);
+    await rm(path.join(sessionDir, lockName), { force: true }).catch(() => undefined);
+  }
   // Auto-pin to latest WA Web version published in wppconnect mirror — works around
   // upstream "stuck at 99%" regressions (whatsapp-web.js issues #5717, #5758, #127084).
   const webVersion = await getLatestWaVersion();
@@ -340,6 +347,67 @@ ${(() => {
   poll();
 })();
 </script>
+
+${(() => {
+  const provider = data.cfg.llmProvider ?? "claude";
+  const gKey = data.cfg.geminiApiKey ?? "";
+  const gImgModel = data.cfg.geminiImageModel ?? "";
+  const gTextModel = data.cfg.geminiTextModel ?? "";
+  const envGKey = process.env.GEMINI_API_KEY ?? "";
+  const envAKey = process.env.ANTHROPIC_API_KEY ?? "";
+  const activeGKey = gKey || envGKey;
+  const mask = (k: string) => k ? `••••${k.slice(-4)}` : "(not set)";
+  const envImgModel = process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
+  const envTextModel = process.env.GEMINI_TEXT_MODEL ?? "gemini-3.1-pro-preview";
+  const activeImgModel = gImgModel || envImgModel;
+  const activeTextModel = gTextModel || envTextModel;
+  const imgModels = [
+    { id: "gemini-3-pro-image-preview", label: "Gemini 3 Pro Image (Nano Banana Pro, slowest, highest quality)" },
+    { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (Nano Banana, fast + cheap)" },
+    { id: "gemini-2.5-flash-image-preview", label: "Gemini 2.5 Flash Image (older, fastest)" },
+  ];
+  const textModels = [
+    { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview (latest, highest reasoning)" },
+    { id: "gemini-3-pro-preview", label: "Gemini 3 Pro Preview (proven)" },
+    { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview (fast)" },
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro (stable production, balanced)" },
+    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash (stable, fast + cheap)" },
+    { id: "gemini-pro-latest", label: "Gemini Pro Latest (alias, auto-bumps)" },
+  ];
+  const imgOpts = imgModels.map((m) => `<option value="${escapeHtml(m.id)}" ${activeImgModel === m.id ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("");
+  const textOpts = textModels.map((m) => `<option value="${escapeHtml(m.id)}" ${activeTextModel === m.id ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("");
+  return `<div class="card">
+  <h2>AI Models</h2>
+  <p style="color:#6b7280;font-size:13px">Pick which AI writes the slides + which renders the images. Live switchable — no restart.</p>
+  <form method="POST" action="/llm/save">
+    <label><strong>Slide-spec writer (text generation)</strong></label>
+    <label><input type="radio" name="llmProvider" value="claude" ${provider === "claude" ? "checked" : ""}/> <strong>Claude</strong> (Anthropic Sonnet 4.6). 90% prompt-cache discount. Requires ANTHROPIC_API_KEY.</label>
+    <label><input type="radio" name="llmProvider" value="gemini" ${provider === "gemini" ? "checked" : ""}/> <strong>Gemini</strong> (Google). Uses the Gemini text model picked below.</label>
+    <p style="color:#9ca3af;font-size:11px">Research + playbook always use Claude (web_search tool). This switches only the slide-spec writer.</p>
+
+    <label style="margin-top:14px"><strong>Gemini text model</strong> (used when slide writer = Gemini)</label>
+    <select name="geminiTextModel">
+      <option value="" ${!gTextModel ? "selected" : ""}>(env default: ${escapeHtml(envTextModel)})</option>
+      ${textOpts}
+    </select>
+    <p style="color:#6b7280;font-size:12px;margin:2px 0">Active text: <code>${escapeHtml(activeTextModel)}</code></p>
+
+    <label style="margin-top:14px"><strong>Gemini image model</strong> (always used for carousel images)</label>
+    <select name="geminiImageModel">
+      <option value="" ${!gImgModel ? "selected" : ""}>(env default: ${escapeHtml(envImgModel)})</option>
+      ${imgOpts}
+    </select>
+    <p style="color:#6b7280;font-size:12px;margin:2px 0">Active image: <code>${escapeHtml(activeImgModel)}</code></p>
+
+    <label style="margin-top:14px">Gemini API key (override env)</label>
+    <input type="password" name="geminiApiKey" value="${escapeHtml(gKey)}" placeholder="AIza… leave blank to use env"/>
+    <p style="color:#6b7280;font-size:12px;margin:2px 0">Active: ${escapeHtml(mask(activeGKey))}${envAKey ? " · ANTHROPIC_API_KEY set" : " · ANTHROPIC_API_KEY missing"}</p>
+
+    <p style="color:#9ca3af;font-size:11px;margin-top:8px">Get Gemini key at aistudio.google.com/app/apikey. Persists in <code>${escapeHtml(config.pipeline.outputDir)}/.delivery.json</code> plaintext — local dev only.</p>
+    <button type="submit" style="margin-top:8px">Save AI Models</button>
+  </form>
+</div>`;
+})()}
 
 <div class="card">
   <h2>Email (SMTP)</h2>
@@ -840,8 +908,66 @@ export function startConfigServer(): void {
         const cfg = await loadDeliveryConfig();
         const { sendCarouselEmail } = await import("./email.js");
         for (const to of cfg.emailRecipients ?? []) {
-          await sendCarouselEmail({ to, subject: "Carousel Factory test email", body: "If you got this, SMTP works." }).catch((e) => log.err("wa-config", `test email to ${to} failed: ${(e as Error).message}`));
+          const testBody = [
+            "If you got this, SMTP works.",
+            "",
+            "──────────────────────────────────────────",
+            "TEST PAYLOAD (simulates a real carousel delivery)",
+            "──────────────────────────────────────────",
+            "",
+            "Carousel: TEST — ANTHROPIC RAISED AT $400B. THAT'S 4X SPACEX.",
+            "Feed: viral",
+            "Source: https://example.com/test-article",
+            "",
+            "First line is the hook. Sharper or different angle from the cover.",
+            "",
+            "Three short context lines follow.",
+            "Each adds one idea the slides couldn't fit.",
+            "Multiple short sentences > one long sentence.",
+            "",
+            "Save this for the next time someone asks if AI is in a bubble.",
+            "Comment STACK and I'll DM the breakdown.",
+            "",
+            "Follow @unfoldedai for more.",
+            "",
+            "#AI #Anthropic #LLM #TechNews #AINews",
+            "",
+            "──────────────────────────────────────────",
+            "Files that would attach on a real run:",
+            "  • 01_hook.png  (Anton headline + photo + yellow highlights + SWIPE chip)",
+            "  • 02_body.png  (text-top + photo-bottom, mixed case body)",
+            "  • 03_body.png  (stat_card variant)",
+            "  • 04_body.png  (quote_pull variant)",
+            "  • caption.txt  (full Instagram caption above)",
+            "  • spec.json    (the structured carousel spec the renderer used)",
+            "  • dm-reply.md  (when feed=prompts: what to DM back to commenters)",
+            "  • 00_source.mp4 (when VIDEO_COVER=true)",
+            "──────────────────────────────────────────",
+            "",
+            "If this email rendered cleanly with all sections visible, SMTP is good to go.",
+          ].join("\n");
+          await sendCarouselEmail({ to, subject: "Carousel Factory test email — full payload preview", body: testBody }).catch((e) => log.err("wa-config", `test email to ${to} failed: ${(e as Error).message}`));
         }
+        res.writeHead(303, { location: "/" });
+        return res.end();
+      }
+      if (req.method === "POST" && url.pathname === "/llm/save") {
+        const form = parseFormBody(await readBody(req));
+        const provider = (form.llmProvider === "gemini" ? "gemini" : "claude") as "claude" | "gemini";
+        const geminiApiKey = (form.geminiApiKey ?? "").trim();
+        const geminiImageModel = (form.geminiImageModel ?? "").trim();
+        const geminiTextModel = (form.geminiTextModel ?? "").trim();
+        await saveDeliveryConfig({
+          llmProvider: provider,
+          geminiApiKey,
+          geminiImageModel,
+          geminiTextModel,
+        });
+        const { invalidateGeminiRuntimeCache } = await import("../render/geminiClient.js");
+        const { invalidateTextGenCache } = await import("../llm/textGen.js");
+        invalidateGeminiRuntimeCache();
+        invalidateTextGenCache();
+        log.ok("wa-config", `LLM saved: writer=${provider} text=${geminiTextModel || "env"} image=${geminiImageModel || "env"} key=${geminiApiKey ? "set" : "env"}`);
         res.writeHead(303, { location: "/" });
         return res.end();
       }

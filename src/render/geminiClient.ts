@@ -1,11 +1,32 @@
 import { GoogleGenAI } from "@google/genai";
 import { config } from "../config.js";
+import { loadDeliveryConfig } from "../delivery/config.js";
 import { log } from "../log.js";
 
-let client: GoogleGenAI | null = null;
-function getClient(): GoogleGenAI {
-  if (!client) client = new GoogleGenAI({ apiKey: config.geminiApiKey });
-  return client;
+// Cached by key — re-init when UI changes the key. Model name is read at request time.
+let _client: { key: string; client: GoogleGenAI } | undefined;
+let _runtimeCache: { ts: number; key: string; model: string } | undefined;
+
+async function getRuntime(): Promise<{ key: string; model: string }> {
+  if (_runtimeCache && Date.now() - _runtimeCache.ts < 5_000) {
+    return { key: _runtimeCache.key, model: _runtimeCache.model };
+  }
+  const cfg = await loadDeliveryConfig().catch(() => null);
+  const key = cfg?.geminiApiKey || config.geminiApiKey;
+  const model = cfg?.geminiImageModel || config.models.imageModel;
+  _runtimeCache = { ts: Date.now(), key, model };
+  return { key, model };
+}
+
+export function invalidateGeminiRuntimeCache(): void {
+  _runtimeCache = undefined;
+}
+
+function getClient(key: string): GoogleGenAI {
+  if (!key) throw new Error("GEMINI_API_KEY required — set via config UI or env");
+  if (_client?.key === key) return _client.client;
+  _client = { key, client: new GoogleGenAI({ apiKey: key }) };
+  return _client.client;
 }
 
 export interface GeminiReferenceImage {
@@ -27,10 +48,11 @@ export interface GeminiImageOutput {
 }
 
 export async function geminiGenerateImage(input: GeminiImageInput): Promise<GeminiImageOutput> {
-  const ai = getClient();
+  const rt = await getRuntime();
+  const ai = getClient(rt.key);
   const t0 = Date.now();
   const refTag = input.references?.length ? ` +${input.references.length}refs` : "";
-  log.tool("gemini", `generate ${input.aspectRatio ?? "default"} ${input.resolution ?? "1K"}${refTag} ...`);
+  log.tool("gemini", `generate model=${rt.model} ${input.aspectRatio ?? "default"} ${input.resolution ?? "1K"}${refTag} ...`);
 
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
   if (input.references?.length) {
@@ -49,13 +71,14 @@ export async function geminiGenerateImage(input: GeminiImageInput): Promise<Gemi
   parts.push({ text: input.prompt });
 
   const res = await ai.models.generateContent({
-    model: config.models.imageModel,
+    model: rt.model,
     contents: parts,
     config: {
       responseModalities: ["IMAGE"],
       imageConfig: {
         aspectRatio: input.aspectRatio ?? "4:5",
-        imageSize: input.resolution ?? "1K",
+        // Locked to 1K per client direction May 2026 — cost cap. Ignore caller overrides.
+        imageSize: "1K",
       } as Record<string, unknown>,
     },
   });

@@ -1,14 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "node:crypto";
+import { jsonrepair } from "jsonrepair";
 import { config } from "../config.js";
 import { log } from "../log.js";
+import { generateText } from "../llm/textGen.js";
 import { SlideSpecSchema, type SlideSpec } from "../types.js";
 import { buildSystemPrompt, buildUserPrompt } from "./prompt.js";
 import { loadPlaybook } from "./playbook.js";
 import { pickEligibleFormats, recordFormat, ALL_FORMATS, type FormatName } from "./recentFormats.js";
 import type { Article } from "../types.js";
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 export class InsufficientSourceError extends Error {
   constructor() {
@@ -17,7 +16,14 @@ export class InsufficientSourceError extends Error {
 }
 
 export async function generateSlideSpec(article: Article, feed?: string): Promise<SlideSpec> {
-  const maxSlides = config.pipeline.maxSlides;
+  // AI-decided slide count. Pass MIN/MAX as a RANGE to the model — it picks the count
+  // that best fits THIS article's depth (sparse story = 3 slides, rich story = 5).
+  // The system prompt instructs the model to choose.
+  const minS = Math.max(2, Math.min(10, Number.parseInt(process.env.MIN_SLIDES ?? "3", 10) || 3));
+  const maxS = Math.max(minS, Math.min(10, Number.parseInt(process.env.MAX_SLIDES_RANDOM ?? "5", 10) || 5));
+  // We still send the upper bound to the prompt so the model knows the cap, but
+  // accept body_slides arrays of any length in [minS-1, maxS-1] in enforceQualityGates.
+  const maxSlides = maxS;
   const expectedBody = Math.max(1, maxSlides - 1);
   log.step("content", `streaming SlideSpec (${maxSlides} slides total) for "${article.title.slice(0, 60)}"`);
 
@@ -28,31 +34,21 @@ export async function generateSlideSpec(article: Article, feed?: string): Promis
   const eligibleFormats = await pickEligibleFormats();
   log.info("content", `eligible formats: ${eligibleFormats.join(", ")}`);
 
-  const systemText = buildSystemPrompt(maxSlides, playbook, eligibleFormats);
-  // Cache the long static system prompt (~8-12k tokens including playbook + format catalog).
-  // 90% input-token discount on cache hits when system reused within 5 min — saves big on
-  // multi-feed bursts (user firing all "Send Now" buttons) and any retry path.
-  const stream = anthropic.messages.stream({
-    model: config.models.contentModel,
-    max_tokens: 4096,
-    system: [{ type: "text", text: systemText, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content: buildUserPrompt({ ...article, feed }, config.brand.handle, maxSlides) }],
+  const systemText = buildSystemPrompt(maxSlides, playbook, eligibleFormats, minS);
+  // claude path caches the system block (~8-12k tokens) for a 90% input-token discount
+  // on cache hits within 5 min. Gemini path has no caching but a generous free tier.
+  const result = await generateText({
+    system: systemText,
+    user: buildUserPrompt({ ...article, feed }, config.brand.handle, maxSlides),
+    maxTokens: 4096,
+    onTextDelta: (delta) => process.stdout.write(log.dim(delta)),
   });
 
-  let buf = "";
-  stream.on("text", (delta) => {
-    buf += delta;
-    process.stdout.write(log.dim(delta));
-  });
-
-  const final = await stream.finalMessage();
   log.newline();
-  const u = final.usage as typeof final.usage & { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
-  const cacheW = u.cache_creation_input_tokens ?? 0;
-  const cacheR = u.cache_read_input_tokens ?? 0;
-  log.ok("content", `stop_reason=${final.stop_reason} input=${final.usage.input_tokens} output=${final.usage.output_tokens} cache_w=${cacheW} cache_r=${cacheR}`);
+  const cacheTag = result.cacheCreate || result.cacheRead ? ` cache_w=${result.cacheCreate} cache_r=${result.cacheRead}` : "";
+  log.ok("content", `provider=${result.provider} model=${result.model} stop_reason=${result.stopReason} input=${result.inputTokens} output=${result.outputTokens}${cacheTag}`);
 
-  const json = extractJson(buf);
+  const json = extractJson(result.text);
 
   if (typeof json === "object" && json !== null && "error" in json && (json as Record<string, unknown>).error === "insufficient_source_material") {
     throw new InsufficientSourceError();
@@ -79,7 +75,8 @@ export async function generateSlideSpec(article: Article, feed?: string): Promis
     throw new Error(`SlideSpec validation failed: ${parsed.error.toString()}`);
   }
 
-  enforceQualityGates(parsed.data, expectedBody);
+  // AI picks count: accept any body count in [minS-1, maxS-1]. Caller passes minS.
+  enforceQualityGates(parsed.data, expectedBody, Math.max(1, minS - 1));
 
   const usedFormat = (candidate.carousel_format as string | undefined) ?? "";
   if (ALL_FORMATS.includes(usedFormat as FormatName)) {
@@ -103,8 +100,6 @@ function extractJson(text: string): unknown {
   try { return JSON.parse(sliced); } catch { /* fall through */ }
   // 3. jsonrepair fallback (trailing commas, unescaped quotes/newlines, smart quotes, etc.)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { jsonrepair } = require("jsonrepair") as { jsonrepair: (s: string) => string };
     return JSON.parse(jsonrepair(sliced));
   } catch (e) {
     throw new Error(`SlideSpec JSON parse failed (even after repair): ${(e as Error).message}\nfirst 300: ${cleaned.slice(0, 300)}`);
@@ -182,7 +177,7 @@ function softTruncate(c: Record<string, unknown>): void {
   if (Array.isArray(bodies)) {
     for (const b of bodies) {
       clipKey(b, "headline", 100);
-      clipKey(b, "body_text", 280);
+      clipKey(b, "body_text", 160);
       clipKey(b, "stat_value", 40);
       clipKey(b, "stat_caption", 140);
       clipKey(b, "pull_quote", 200);
@@ -206,10 +201,10 @@ function clip(s: string, max: number): string {
   return slice;
 }
 
-function enforceQualityGates(spec: SlideSpec, expectedBody: number): void {
-  const minBody = Math.max(1, expectedBody - 1);
-  if (spec.body_slides.length > expectedBody) {
-    spec.body_slides.length = expectedBody;
+function enforceQualityGates(spec: SlideSpec, expectedMaxBody: number, minBodyOverride?: number): void {
+  const minBody = Math.max(1, minBodyOverride ?? expectedMaxBody - 1);
+  if (spec.body_slides.length > expectedMaxBody) {
+    spec.body_slides.length = expectedMaxBody;
   } else if (spec.body_slides.length < minBody) {
     throw new Error(`Need at least ${minBody} body slides, model returned ${spec.body_slides.length}`);
   }
@@ -234,5 +229,19 @@ function enforceQualityGates(spec: SlideSpec, expectedBody: number): void {
   const hookWords = spec.hook_slide.headline.trim().split(/\s+/).length;
   if (hookWords > 12) {
     log.warn("content", `hook is ${hookWords} words (target ≤10). Reads heavy on mobile.`);
+  }
+
+  // Enforce body-variant variety (visual rhythm). Client May 2026: "2nd + 3rd carousel
+  // had same style". Force consecutive body slides to use different layout_variants.
+  const variantPool: ("text_explainer" | "stat_card" | "quote_pull" | "list_card")[] =
+    ["text_explainer", "stat_card", "quote_pull", "list_card"];
+  for (let i = 1; i < spec.body_slides.length; i += 1) {
+    const cur = spec.body_slides[i]!;
+    const prev = spec.body_slides[i - 1]!;
+    if (cur.layout_variant === prev.layout_variant) {
+      const next = variantPool.find((v) => v !== prev.layout_variant && v !== "text_explainer") ?? "stat_card";
+      log.warn("content", `body slide ${cur.slide_number}: rotating ${cur.layout_variant} → ${next} (same as prev slide, breaks rhythm)`);
+      cur.layout_variant = next;
+    }
   }
 }

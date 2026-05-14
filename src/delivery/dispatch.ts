@@ -1,9 +1,26 @@
 import path from "node:path";
+import { readdir } from "node:fs/promises";
 import { log } from "../log.js";
 import { zipCarouselDir } from "./zip.js";
 import { sendZipToWhatsApp } from "./whatsapp.js";
 import { sendCarouselEmail } from "./email.js";
 import { loadDeliveryConfig } from "./config.js";
+
+/** List EVERY file in the carousel output dir — slides (.png/.mp4), caption.txt,
+ *  spec.json, DM reply file, source video, anything else. Sorted by filename so slides
+ *  arrive in swipe order (01_hook → 02_body → ...) and metadata files follow.
+ *  Skips dotfiles + nested dirs. */
+async function listAllCarouselFiles(dir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && !e.name.startsWith("."))
+      .map((e) => path.join(dir, e.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
 
 export interface DispatchInput {
   carouselDir: string;
@@ -38,9 +55,25 @@ export async function dispatchCarousel(input: DispatchInput): Promise<{ zipPath:
     }
   }
   if (cfg.enableEmail && cfg.emailRecipients?.length) {
+    // Email: send individual slide files as attachments (NOT the zip).
+    // Client direction May 2026 — recipients prefer images inline, no zip to unpack.
+    // Toggle back to zip with EMAIL_SEND_ZIP=true.
+    const sendAsZip = (process.env.EMAIL_SEND_ZIP ?? "false").toLowerCase() === "true";
+    // Send ALL carousel files — slides + spec.json + caption.txt + DM reply (when feed=prompts)
+    // + source video. Same contents as zip, just unzipped so recipient can open inline.
+    const allFiles = await listAllCarouselFiles(input.carouselDir);
+    const attachmentPaths = sendAsZip || allFiles.length === 0 ? [zipPath] : allFiles;
+    const emailBody =
+      `Carousel: ${input.hookHeadline}\n` +
+      (input.feed ? `Feed: ${input.feed}\n` : "") +
+      (input.sourceUrl ? `Source: ${input.sourceUrl}\n` : "") +
+      `\n${input.caption}\n\n` +
+      (sendAsZip
+        ? `ZIP attached. Output dir: ${path.basename(input.carouselDir)}`
+        : `${allFiles.length} files attached (slides + caption.txt + spec.json + DM reply if any). Output dir: ${path.basename(input.carouselDir)}`);
     for (const to of cfg.emailRecipients) {
       try {
-        await sendCarouselEmail({ to, subject, body, attachmentPath: zipPath });
+        await sendCarouselEmail({ to, subject, body: emailBody, attachmentPaths });
         sent.email = true;
       } catch (e) {
         log.err("dispatch", `email to ${to} failed: ${(e as Error).message}`);

@@ -1,0 +1,81 @@
+{
+  "viral": {
+    "kind": "viral",
+    "label": "VIRAL — jaw-dropping moments across politics, business, world, tech, AI, science, culture, sports",
+    "sourceHints": "MIX across AI sub-categories every run. NEVER 3 model-release stories in a row.\n\nSub-categories to rotate (priority weighting in parentheses):\n1. AI APPLICATIONS IN INDUSTRY (HIGH) — \"Indian banks deploy Claude for fraud\", \"Mayo Clinic uses GPT-5 for radiology\", \"Walmart replaces 200 analysts with agents\", \"Bhashini AI rolled out by Indian govt\". Real company + real AI vendor + real outcome.\n2. AI ROBOTICS (HIGH) — Figure, 1X, Tesla Optimus, Unitree, Sanctuary, Apptronik humanoid demos, surgical AI, autonomous vehicles, drones\n3. AI AGENTS doing impossible things — autonomous task agents, computer use, coding agents shipping PRs, agents trading stocks\n4. AI HARDWARE — chip drops (Nvidia/AMD/Cerebras/Groq), datacenter builds, GPU shortages, custom silicon news\n5. AI CONSUMER APPS — ChatGPT/Claude/Gemini features, Sora/Veo demos, AI in WhatsApp/Instagram/Snap\n6. AI MODEL RELEASES (LOWER weight — too overused) — only if genuinely novel architecture\n\nPRIMARY DISCOVERY SOURCES:\nA) Broad AI aggregators:\n- rundown.ai, joinsuperhuman.ai, theneuron.ai, marktechpost.com, venturebeat.com/ai\n- bensbites.com, alphasignal.ai, tldr.tech/ai, aiweekly.co, smol.ai/news\nB) Community vote (filter to AI):\n- news.ycombinator.com + hn.algolia.com AI tag, past 24h points>300\n- r/singularity, r/LocalLLaMA, r/ChatGPT, r/artificial, r/AutoGenAI, r/LangChain — HOT > 300\n- techmeme.com (AI section), producthunt.com (AI tools launching)\nC) Editorial AI sections (client-picked May 2026):\n- venturebeat.com/category/ai, wired.com/tag/artificial-intelligence, artificialintelligence-news.com\n- techcrunch.com/category/artificial-intelligence, aimagazine.com, nature.com/natmachintell\n- theverge.com/ai-artificial-intelligence, arstechnica.com (AI tag)\n- technologyreview.com (AI category), theinformation.com (AI section)\n- bloomberg.com (AI tag), ft.com/artificial-intelligence\nD) AI in industry — search \"[industry] adopts AI\" / \"[country] deploys AI\":\n- finextra.com, fiercehealthcare.com, edsurge.com, defense-one.com, govtech.com, indianexpress.com tech, livemint.com\nE) Research signal:\n- huggingface.co/papers, arxiv.org cs.AI / cs.LG / cs.CL, github trending AI 1k+ stars/24h",
+    "queries": [
+      "AI breakthrough viral last 48 hours",
+      "AI agent does the impossible demo",
+      "humanoid robot demo viral this week",
+      "Indian bank deploys AI fraud detection",
+      "hospital AI radiology deployment 2026",
+      "company replaces employees AI agents this week",
+      "AI tool launch viral Product Hunt",
+      "AI chip release Nvidia AMD Cerebras",
+      "site:reddit.com r/singularity OR r/LocalLLaMA hot AI",
+      "Sora Veo AI video viral generated clip",
+      "government deploys AI rollout announcement"
+    ],
+    "selectionRule": "Pick AI stories with a CONCRETE VISIBLE ACTION (robot, agent, deployment, demo). Diversify ACROSS AI sub-categories — never 3 model-release stories in a row. PRIORITIZE applied-AI stories (industry/country/company deploying AI for real outcomes) over pure lab announcements.",
+    "preferredCategories": ["model_release", "tool", "research", "business"]
+  },
+  "controversy": {
+    "kind": "controversy",
+    "label": "CONTROVERSY — AI drama: lawsuits, leaks, founder fights, safety incidents",
+    "sourceHints": "AI-niche drama across sub-categories:\n- AI LAWSUITS — NYT v OpenAI, Getty v Stability, copyright suits, class actions\n- AI POLICY drama — EU AI Act enforcement, US executive orders, China rules, India DPDP fights\n- AI EMPLOYEE leaks + founder fights — DM screenshots, leaked memos, board drama\n- AI SAFETY incidents — deepfakes used in crime, jailbreaks, biased outputs caught in production\n- AI LAYOFFS at AI companies, OR layoffs caused BY AI adoption at incumbents\n- AI EXECUTIVE shakeups — CEO fired, board fights, exits\n\nSource bias:\n- theinformation.com — insider scoops\n- bloomberg.com, ft.com, wsj.com, reuters.com — corporate drama + lawsuits\n- techcrunch.com (AI), theverge.com — public-facing AI drama\n- X/Twitter — founder fights, employee leaks, screenshots\n- Substack: Big Technology (Kantrowitz), Platformer (Newton), Stratechery (Thompson)\n- Court filings via PACER on Bloomberg/Reuters\n- artificialintelligence-news.com (policy beat)",
+    "queries": [
+      "AI lawsuit filed last 48 hours",
+      "OpenAI Anthropic founder dispute",
+      "AI company layoffs",
+      "AI employee leaked memo",
+      "AI jailbreak rogue behavior viral",
+      "AI executive fired board",
+      "AI copyright infringement lawsuit",
+      "AI startup shutdown investigation",
+      "AI deepfake crime arrest",
+      "EU AI Act enforcement action this week",
+      "AI safety incident production deployment"
+    ],
+    "selectionRule": "AI-related controversy with NAMED VILLAIN and NAMED VICTIM. Mix sub-types (lawsuit / leak / fight / policy / safety incident). No politics drama unless it's specifically AI policy. Reader must understand: who is fighting whom in AI world, why someone is bleeding.",
+    "preferredCategories": ["controversy", "business"]
+  },
+  "prompts": {
+    "kind": "prompts",
+    "label": "PROMPTS — best prompts, agent tactics, tactical AI how-to",
+    "sourceHints": "MANDATORY: pick prompts from REAL USERS (Reddit posters, Medium writers, X threads, Discord). NEVER from company blogs / docs / official \"prompt libraries\". Users want stuff peers actually use, not vendor templates.\nPRIMARY (user-generated, what we want):\n- reddit.com/r/PromptEngineering, /r/ChatGPTPromptGenius, /r/ChatGPTPro, /r/aipromptprogramming, /r/ChatGPT, /r/LocalLLaMA — HOT tab, top posts of the week with 200+ upvotes\n- medium.com search \"ChatGPT prompt\" / \"Claude prompt\" — individual authors, last 7 days\n- substack search \"prompt of the week\", Lenny's Newsletter, One Useful Thing (Ethan Mollick)\n- X/Twitter posts from real practitioners (not corp accounts): simonw, hamelhusain, eugeneyan, swyx, dr_cintas, mattshumer_, _akhaliq, AnthropicAI replies thread\n- threads.net + Bluesky search \"I just found this prompt\"\n- HN front page: stories tagged \"Show HN: prompt\" / \"Ask HN: best prompt\"\n- Discord screenshots / X screenshots people post of conversations\nDIVERSIFY: every carousel MUST pull from a DIFFERENT primary source (don't run 3 Reddit prompts in a row). Mix Reddit + Medium + X + Substack.\nBANNED for this feed:\n- anthropic.com docs, openai.com cookbook, docs.anthropic.com/prompt-library, anthropic.com/news, openai.com/news, deepmind.google\n- promptbase.com (paid, low-trust), learnprompting.org (textbook), DeepLearning.AI (course)\n- Any \"X company released their prompt library\" official announcement\nReason: users find official prompts boring + already know about them. The win is the random Reddit thread where one user shares a trick that works.",
+    "queries": [
+      "site:reddit.com/r/PromptEngineering best prompt this week",
+      "site:reddit.com/r/ChatGPTPromptGenius viral prompt",
+      "site:reddit.com /r/ChatGPT prompt that changed my workflow",
+      "site:medium.com ChatGPT prompt I use daily 2026",
+      "site:medium.com Claude prompt agent tactic last week",
+      "X thread \"prompt I use\" OR \"prompt that\" simonw OR hamelhusain OR mattshumer",
+      "Substack one useful thing prompt this week",
+      "Show HN prompt OR \"Ask HN best prompt\"",
+      "Cursor Windsurf prompt template Reddit",
+      "leaked system prompt agent Reddit"
+    ],
+    "selectionRule": "Story MUST originate from a REAL USER on Reddit / Medium / X / Substack / HN (not a company blog). The prompt must be specific, copy-pastable, and the post must show a real outcome the author got. Diversify source domain across carousels — don't repeat the same site twice in a row.",
+    "preferredCategories": ["tool", "research"]
+  },
+  "latest": {
+    "kind": "latest",
+    "label": "LATEST — fresh major news across politics, business, world, tech, AI, science, culture, sports",
+    "sourceHints": "Cover the FULL AI ecosystem — not just LLM/model releases.\n\nDIVERSITY RULE: every batch MUST cover ≥3 different AI SUB-CATEGORIES (not just \"model release\"):\n- AI APPLICATIONS in industry (high priority): bank/hospital/govt/retail deploying AI\n- AI HARDWARE: chip drops, GPU shortages, datacenter news\n- AI POLICY: EU AI Act, US orders, India DPDP, China rules, copyright rulings\n- AI FUNDING: raises, IPOs, M&A, layoffs\n- AI AGENTS + ROBOTICS: autonomous agents, humanoids, surgical AI, autonomous vehicles\n- AI CONSUMER APPS: ChatGPT/Claude/Gemini features, AI in WhatsApp/IG/Snap, Sora/Veo\n- AI INFRA: APIs, open-source models (Llama, Qwen, DeepSeek), tooling\n- AI MODEL RELEASES (cap at 1-2 per batch — keep variety)\n\nPHASE 1 (DISCOVERY — mix across these, never single-source):\nA) Broad AI aggregators:\n- rundown.ai, joinsuperhuman.ai, theneuron.ai, marktechpost.com, venturebeat.com/ai\n- bensbites.com, alphasignal.ai, tldr.tech/ai, aiweekly.co, smol.ai/news, platformer.news\nB) Community vote (AI filter):\n- news.ycombinator.com + hn.algolia.com past 24h points>300, AI keywords\n- techmeme.com / techmeme.com/river (AI section)\n- r/technology, r/singularity, r/MachineLearning, r/LocalLLaMA, r/ChatGPT, r/artificial HOT > 300\nC) Editorial broad-tech (AI section, client-picked May 2026):\n- venturebeat.com/category/ai, wired.com/tag/artificial-intelligence, artificialintelligence-news.com\n- techcrunch.com/category/artificial-intelligence, aimagazine.com, nature.com/natmachintell\n- theverge.com, arstechnica.com, technologyreview.com, theinformation.com\n- bloomberg.com/ai, ft.com/artificial-intelligence\nD) AI applications in industry (search \"[industry] AI\" / \"[country] AI deployment\"):\n- finextra.com (finance), fiercehealthcare.com (healthcare), edsurge.com (education)\n- defense-one.com, govtech.com (defense/govt)\n- indianexpress.com/tech, livemint.com (India market AI adoption)\nE) Research signal:\n- huggingface.co/papers daily top, arxiv cs.AI, github trending AI\n\nPHASE 2 (PRIMARY-SOURCE URL): aggregators surface stories → follow link to original publisher. Never use aggregator URL as final.\n\nAnti-bias: if 3+ stories in batch are \"Anthropic/OpenAI released X\", REPLACE 2-3 with applied-AI / hardware / policy / robotics. Diversity > novelty.",
+    "queries": [
+      "site:rundown.ai OR site:therundown.ai today",
+      "site:joinsuperhuman.ai OR site:theneuron.ai today AI news",
+      "site:bensbites.com OR site:alphasignal.ai OR site:tldr.tech/ai today",
+      "site:techmeme.com AI today",
+      "AI deployment company industry last 48 hours",
+      "AI bank financial services deployment 2026",
+      "AI hospital healthcare deployment last week",
+      "AI hardware chip release this week Nvidia AMD",
+      "EU AI Act enforcement OR India AI policy this week",
+      "humanoid robot announcement this week",
+      "AI startup funding raise last 48 hours"
+    ],
+    "selectionRule": "Fresh AI stories from last 24-48h. MUST cover ≥3 different AI SUB-CATEGORIES per batch — applications, hardware, policy, agents, robotics, etc. Cap model-release stories at 1-2 per batch. Prioritize applied-AI in real industries.",
+    "preferredCategories": ["model_release", "research", "business", "tool"]
+  }
+}

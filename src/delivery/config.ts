@@ -15,6 +15,16 @@ export interface DeliveryConfig {
   automationEnabled: boolean;
   /** Per-slot feed mapping. Index matches SCHEDULE_CRONS order. Empty array = skip that slot. */
   slotFeeds: FeedSlot[][];
+  /** Override env GEMINI_API_KEY at runtime via config UI. Empty = use env. */
+  geminiApiKey?: string;
+  /** Image model id. "gemini-3-pro-image-preview" (Pro, slower, higher quality)
+   *  or "gemini-3.1-flash-image-preview" (Flash, faster, cheaper). Empty = env default. */
+  geminiImageModel?: string;
+  /** LLM provider for slide-spec generation. "claude" (default) or "gemini".
+   *  Research + playbook always use Claude (web_search_20250305 tool). */
+  llmProvider?: "claude" | "gemini";
+  /** Gemini text model when llmProvider=gemini. e.g. "gemini-3-pro", "gemini-2.5-pro". */
+  geminiTextModel?: string;
 }
 
 const DEFAULT: DeliveryConfig = {
